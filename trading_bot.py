@@ -646,4 +646,6 @@ class OptimizedStrategyBot:
         self.logger.info("🛑 Trading stopped")
 
 # Globalna instancja zoptymalizowanego bota
-trading_bot = OptimizedStrategyBot(initial_capital=10000, leverage=10)
+from trading_bot_ml import MLEnhancedTradingBot
+trading_bot = MLEnhancedTradingBot(initial_capital=10000, leverage=10)
+
