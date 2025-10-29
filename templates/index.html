@@ -663,21 +663,27 @@
         }
 
         // Pobierz dane z API
-        async function fetchTradingData() {
-            try {
-                const response = await fetch('/api/trading-data');
-                const data = await response.json();
-                
-                if (data.error) {
-                    console.error('API Error:', data.error);
-                    return;
-                }
-                
-                updateDashboard(data);
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            }
+        // Pobierz dane z API - Z DODANYM LOGOWANIEM
+async function fetchTradingData() {
+    try {
+        console.log('🔄 Fetching trading data...');
+        const response = await fetch('/api/trading-data');
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('API Error:', data.error);
+            return;
         }
+        
+        console.log('✅ Data received - Active positions:', data.active_positions?.length, 'Recent trades:', data.recent_trades?.length);
+        console.log('📊 Full active positions:', data.active_positions);
+        console.log('📈 Full recent trades:', data.recent_trades);
+        
+        updateDashboard(data);
+    } catch (error) {
+        console.error('Error fetching data:', error);
+    }
+}
 
         // Aktualizuj wykres TYLKO po transakcjach
         function updateChart(data) {
