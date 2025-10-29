@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 class MLTradingBot:
-    def __init__(self, initial_capital=50000, leverage=10):
+    def __init__(self, initial_capital=10000, leverage=10):
         self.virtual_capital = initial_capital
         self.virtual_balance = initial_capital
         self.leverage = leverage
@@ -43,23 +43,33 @@ class MLTradingBot:
         self.training_data = []
         self.feature_columns = []
         
-        # Trading Parameters (5% max position size)
+        # NOWA STRATEGIA ALOKACJI - zgodnie z Twoimi danymi
         self.max_simultaneous_positions = 6
-        self.position_size_percentage = 0.05
-        
-        # Position sizes from your history
-        self.position_sizes = {
-            'BTCUSDT': 0.12,
-            'ETHUSDT': 3.2968,
-            'BNBUSDT': 7.036,
-            'XRPUSDT': 1737.0,
-            'DOGEUSDT': 27858.0,
-            'SOLUSDT': 20.76,
-            'ADAUSDT': 5000.0,
-            'DOTUSDT': 200.0
+        self.asset_allocation = {
+            'ETHUSDT': 0.22,  # 22% - główna pozycja
+            'BTCUSDT': 0.20,  # 20% - główna pozycja  
+            'SOLUSDT': 0.19,  # 19% - główna pozycja
+            'BNBUSDT': 0.18,  # 18% - średnia pozycja
+            'XRPUSDT': 0.17,  # 17% - średnia pozycja
+            'DOGEUSDT': 0.04, # 4% - mniejsza pozycja
         }
         
-        self.priority_symbols = ['ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'BTCUSDT', 'DOGEUSDT', 'ADAUSDT', 'DOTUSDT']
+        self.priority_symbols = list(self.asset_allocation.keys())
+        
+        # Breakout trading parameters
+        self.breakout_threshold = 0.02  # 2% powyżej oporu
+        self.min_volume_ratio = 1.5     # 150% średniego volume
+        self.max_position_value = 0.30  # MAX 30% na jedną pozycję
+        
+        # Position sizes from breakout strategy
+        self.position_sizes = {
+            'ETHUSDT': 2.5,     # ~$2,000 przy $4,000 ETH
+            'BTCUSDT': 0.08,    # ~$2,400 przy $30,000 BTC
+            'SOLUSDT': 12.0,    # ~$2,400 przy $200 SOL
+            'BNBUSDT': 15.0,    # ~$2,250 przy $150 BNB
+            'XRPUSDT': 4500.0,  # ~$2,250 przy $0.50 XRP
+            'DOGEUSDT': 25000.0, # ~$1,000 przy $0.04 DOGE
+        }
         
         # Statistics
         self.stats = {
@@ -69,7 +79,9 @@ class MLTradingBot:
             'total_pnl': 0,
             'total_fees': 0,
             'biggest_win': 0,
-            'biggest_loss': 0
+            'biggest_loss': 0,
+            'breakout_trades': 0,
+            'portfolio_utilization': 0
         }
         
         # Dashboard
@@ -79,18 +91,20 @@ class MLTradingBot:
             'total_fees': 0,
             'net_realized': 0,
             'unrealized_pnl': 0,
-            'average_leverage': 10,
+            'average_leverage': leverage,
             'average_confidence': 0,
             'ml_accuracy': 0,
+            'portfolio_diversity': 0,
             'last_update': datetime.now()
         }
         
         # Initialize ML model
         self.initialize_ml_model()
         
-        self.logger.info("🧠 ML TRADING BOT INITIALIZED")
+        self.logger.info("🧠 ML TRADING BOT - BREAKOUT STRATEGY")
         self.logger.info(f"💰 Initial capital: ${initial_capital}")
-        self.logger.info("⚡ 3min Candle Stop Loss Analysis: ACTIVE")
+        self.logger.info("📊 Asset Allocation: ETH(22%) BTC(20%) SOL(19%) BNB(18%) XRP(17%) DOGE(4%)")
+        self.logger.info("⚡ Breakout Trading + 3min Candle Stop Loss")
 
     def initialize_ml_model(self):
         """Initialize ML model with Random Forest"""
@@ -105,11 +119,46 @@ class MLTradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error initializing ML model: {e}")
 
+    def detect_breakout_signal(self, symbol: str) -> Tuple[bool, float, float]:
+        """Wykrywa sygnały breakout na podstawie oporu i volume"""
+        try:
+            df = self.get_binance_klines(symbol, '3m', 100)
+            if df is None or len(df) < 50:
+                return False, 0, 0
+            
+            # Oblicz poziomy oporu
+            resistance_level = df['high'].rolling(20).max().iloc[-1]
+            current_price = df['close'].iloc[-1]
+            current_volume = df['volume'].iloc[-1]
+            avg_volume = df['volume'].rolling(20).mean().iloc[-1]
+            
+            # Sprawdź czy cena przebiła opór
+            price_above_resistance = current_price > resistance_level
+            breakout_strength = (current_price - resistance_level) / resistance_level
+            
+            # Sprawdź volume - musi być powyżej średniej
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+            
+            # Warunki breakout
+            is_breakout = (price_above_resistance and 
+                          breakout_strength >= self.breakout_threshold and
+                          volume_ratio >= self.min_volume_ratio)
+            
+            confidence = min(breakout_strength * 10 + volume_ratio * 0.2, 0.95)
+            
+            if is_breakout:
+                self.logger.info(f"🎯 BREAKOUT DETECTED: {symbol} - Strength: {breakout_strength:.2%}, Volume: {volume_ratio:.1f}x")
+            
+            return is_breakout, confidence, resistance_level
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error detecting breakout for {symbol}: {e}")
+            return False, 0, 0
+
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate comprehensive technical indicators for ML features"""
         try:
             # Price-based indicators
-            df['sma_10'] = df['close'].rolling(10).mean()
             df['sma_20'] = df['close'].rolling(20).mean()
             df['sma_50'] = df['close'].rolling(50).mean()
             df['ema_12'] = df['close'].ewm(span=12).mean()
@@ -139,18 +188,15 @@ class MLTradingBot:
             df['volume_sma'] = df['volume'].rolling(20).mean()
             df['volume_ratio'] = df['volume'] / df['volume_sma']
             
-            # Price momentum
-            df['price_change_1h'] = df['close'].pct_change(20)  # 1 hour in 3min intervals
-            df['price_change_6h'] = df['close'].pct_change(120)  # 6 hours
-            
-            # Volatility
-            df['volatility'] = df['close'].rolling(20).std() / df['close'].rolling(20).mean()
-            
             # Support/Resistance
             df['resistance'] = df['high'].rolling(20).max()
             df['support'] = df['low'].rolling(20).min()
             df['distance_to_resistance'] = (df['resistance'] - df['close']) / df['close']
             df['distance_to_support'] = (df['close'] - df['support']) / df['close']
+            
+            # Momentum
+            df['momentum_1h'] = df['close'].pct_change(20)  # 1 hour momentum
+            df['volatility'] = df['close'].rolling(20).std() / df['close'].rolling(20).mean()
             
             return df
             
@@ -158,231 +204,189 @@ class MLTradingBot:
             self.logger.error(f"❌ Error calculating technical indicators: {e}")
             return df
 
-    def prepare_ml_features(self, df: pd.DataFrame) -> np.ndarray:
-        """Prepare features for ML model"""
+    def generate_breakout_signal(self, symbol: str) -> Tuple[str, float]:
+        """Generuje sygnał oparty na strategii breakout"""
         try:
-            feature_columns = [
-                'rsi', 'macd', 'macd_histogram', 'bb_position', 
-                'volume_ratio', 'price_change_1h', 'price_change_6h',
-                'volatility', 'distance_to_resistance', 'distance_to_support'
-            ]
+            # Najpierw sprawdź breakout
+            is_breakout, breakout_confidence, resistance_level = self.detect_breakout_signal(symbol)
             
-            # Use only the last row for prediction
-            current_features = df[feature_columns].iloc[-1:].fillna(0)
+            if is_breakout and breakout_confidence >= 0.65:
+                return "BREAKOUT_LONG", breakout_confidence
             
-            return current_features.values
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error preparing ML features: {e}")
-            return np.zeros((1, 10))
-
-    def generate_ml_signal(self, symbol: str) -> Tuple[str, float]:
-        """Generate trading signal using ML model"""
-        try:
+            # Fallback do tradycyjnej strategii ML
             df = self.get_binance_klines(symbol, '3m', 100)
             if df is None or len(df) < 50:
                 return "HOLD", 0.5
             
             df = self.calculate_technical_indicators(df)
             
-            if not self.is_trained:
-                # Fallback to traditional strategy if ML not trained
-                return self.fallback_signal(df)
-            
-            features = self.prepare_ml_features(df)
-            
-            if features.shape[1] != 10:
-                return self.fallback_signal(df)
-            
-            # Make prediction
-            prediction = self.model.predict(features)[0]
-            prediction_proba = self.model.predict_proba(features)[0]
-            
-            confidence = max(prediction_proba)
-            
-            if prediction == 1 and confidence > 0.65:
-                return "LONG", confidence
-            else:
-                return "HOLD", confidence
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error in ML signal generation: {e}")
-            return "HOLD", 0.5
-
-    def fallback_signal(self, df: pd.DataFrame) -> Tuple[str, float]:
-        """Fallback traditional strategy when ML is not available"""
-        try:
             current_rsi = df['rsi'].iloc[-1]
             current_price = df['close'].iloc[-1]
-            sma_20 = df['sma_20'].iloc[-1]
             volume_ratio = df['volume_ratio'].iloc[-1] if not pd.isna(df['volume_ratio'].iloc[-1]) else 1
             macd_histogram = df['macd_histogram'].iloc[-1]
+            momentum_1h = df['momentum_1h'].iloc[-1]
 
             confidence = 0.0
             signal = "HOLD"
             
+            # Warunki dla momentum trading
             conditions = 0
-            if 30 <= current_rsi <= 65:
+            if 40 <= current_rsi <= 70:  # Optymalny zakres RSI dla breakout
                 conditions += 1
-                confidence += 0.2
-            if volume_ratio > 1.2:
+                confidence += 0.15
+            
+            if volume_ratio > 1.3:  # Wysoki volume
                 conditions += 1
-                confidence += 0.2
-            if current_price > sma_20:
+                confidence += 0.20
+            
+            if macd_histogram > 0:  # Pozytywny momentum MACD
                 conditions += 1
-                confidence += 0.2
-            if macd_histogram > 0:
+                confidence += 0.20
+            
+            if momentum_1h > 0.01:  # Pozytywny momentum 1h
                 conditions += 1
-                confidence += 0.2
+                confidence += 0.15
+            
+            if current_price > df['sma_20'].iloc[-1]:  # Cena powyżej SMA20
+                conditions += 1
+                confidence += 0.15
             
             if conditions >= 3:
                 signal = "LONG"
-                confidence = min(confidence, 0.85)
+                confidence = min(confidence + (conditions - 3) * 0.1, 0.85)
             
             return signal, confidence
             
         except Exception as e:
-            self.logger.error(f"❌ Error in fallback signal: {e}")
+            self.logger.error(f"❌ Error generating breakout signal for {symbol}: {e}")
             return "HOLD", 0.5
 
-    def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
-        """Fetch data from Binance"""
+    def calculate_breakout_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
+        """Oblicza wielkość pozycji zgodnie z alokacją assetów"""
         try:
-            url = "https://api.binance.com/api/v3/klines"
-            params = {
-                'symbol': symbol,
-                'interval': interval,
-                'limit': limit
-            }
+            # Bazowa alokacja z portfolio
+            allocation_percentage = self.asset_allocation.get(symbol, 0.15)
             
-            response = requests.get(url, params=params, timeout=10)
-            data = response.json()
+            # Dostosowanie na podstawie confidence
+            confidence_multiplier = 0.7 + (confidence * 0.3)  # 0.7-1.0
             
-            df = pd.DataFrame(data, columns=[
-                'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                'close_time', 'quote_volume', 'trades', 'taker_buy_base', 
-                'taker_buy_quote', 'ignore'
-            ])
+            # Oblicz wartość pozycji
+            position_value = (self.virtual_capital * allocation_percentage) * confidence_multiplier
             
-            for col in ['open', 'high', 'low', 'close', 'volume']:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+            # Limit maksymalnej pozycji (30% depozytu)
+            max_position_value = self.virtual_capital * self.max_position_value
+            position_value = min(position_value, max_position_value)
             
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            # Oblicz quantity
+            quantity = position_value / price
             
-            return df
+            # Użyj historycznej wielkości jeśli mniejsza
+            historical_quantity = self.position_sizes.get(symbol, quantity)
+            final_quantity = min(quantity, historical_quantity)
+            
+            # Przelicz finalną wartość
+            final_position_value = final_quantity * price
+            margin_required = final_position_value / self.leverage
+            
+            return final_quantity, final_position_value, margin_required
             
         except Exception as e:
-            self.logger.error(f"❌ Error fetching data for {symbol}: {e}")
-            return None
+            self.logger.error(f"❌ Error calculating position size for {symbol}: {e}")
+            return 0, 0, 0
 
-    def get_current_price(self, symbol: str):
-        """Get current price"""
+    def get_portfolio_diversity(self) -> float:
+        """Oblicza dywersyfikację portfela"""
         try:
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-            response = requests.get(url, timeout=10)
-            data = response.json()
-            return float(data['price'])
+            active_positions = [p for p in self.positions.values() if p['status'] == 'ACTIVE']
+            if not active_positions:
+                return 0
+            
+            total_margin = sum(p['margin'] for p in active_positions)
+            if total_margin == 0:
+                return 0
+            
+            # Oblicz wskaźnik Herfindahla (miernik koncentracji)
+            concentration_index = sum((p['margin'] / total_margin) ** 2 for p in active_positions)
+            diversity = 1 - concentration_index
+            
+            return diversity
+            
         except Exception as e:
-            self.logger.error(f"❌ Error fetching price for {symbol}: {e}")
-            return None
+            self.logger.error(f"❌ Error calculating portfolio diversity: {e}")
+            return 0
 
     def should_close_based_on_3min_candle(self, symbol: str, position: dict) -> bool:
         """Sprawdza czy zamknięcie 3-minutowej świecy wymaga zamknięcia pozycji"""
         try:
-            # Pobierz 5 ostatnich 3-minutowych świec
             df_3min = self.get_binance_klines(symbol, '3m', 5)
             if df_3min is None or len(df_3min) < 3:
                 return False
             
-            # Analiza ostatniej zamkniętej świecy
-            last_candle = df_3min.iloc[-2]  # -2 bo -1 może być jeszcze otwarta
+            last_candle = df_3min.iloc[-2]
             current_price = df_3min['close'].iloc[-1]
             
             stop_loss_price = position['exit_plan']['stop_loss']
             entry_price = position['entry_price']
+            take_profit_price = position['exit_plan']['take_profit']
             
             # WARUNK 1: Zamknięcie poniżej Stop Loss
             if last_candle['close'] <= stop_loss_price:
                 self.logger.info(f"🔴 3min Candle CLOSE below SL: {last_candle['close']:.4f} <= {stop_loss_price:.4f}")
                 return True
             
-            # WARUNK 2: Silny bearish pattern
+            # WARUNK 2: Zamknięcie powyżej Take Profit (częściowe zabezpieczenie zysku)
+            if last_candle['close'] >= take_profit_price * 0.95:  # 95% TP
+                self.logger.info(f"🟢 3min Candle near TP: {last_candle['close']:.4f} >= {take_profit_price * 0.95:.4f}")
+                return True
+            
+            # WARUNK 3: Duża bearish świeca po breakout
             candle_size = abs(last_candle['close'] - last_candle['open'])
             avg_candle_size = abs(df_3min['close'] - df_3min['open']).tail(10).mean()
             
-            # Sprawdź czy świeca jest bearish (czerwona)
             is_bearish = last_candle['close'] < last_candle['open']
+            is_large_candle = candle_size > (avg_candle_size * 2.0) if avg_candle_size > 0 else False
             
-            # Sprawdź czy świeca jest duża (więcej niż 1.5x średniej)
-            is_large_candle = candle_size > (avg_candle_size * 1.5) if avg_candle_size > 0 else False
-            
-            # Sprawdź czy cena jest poniżej entry
-            below_entry = last_candle['close'] < entry_price
-            
-            # WARUNK 3: Duża bearish świeca poniżej entry price
-            if is_bearish and is_large_candle and below_entry:
-                self.logger.info(f"🔴 Large Bearish 3min Candle: size={candle_size:.4f}, close={last_candle['close']:.4f}")
+            if is_bearish and is_large_candle and last_candle['close'] < entry_price:
+                self.logger.info(f"🔴 Large Bearish Reversal Candle after breakout")
                 return True
             
-            # WARUNK 4: Konsekwentny spadek (2-3 bearish świece z rzędu)
-            recent_candles = df_3min.tail(3)
-            bearish_count = sum(1 for _, candle in recent_candles.iterrows() 
-                              if candle['close'] < candle['open'])
-            
-            if bearish_count >= 2 and last_candle['close'] < entry_price:
-                self.logger.info(f"🔴 {bearish_count} consecutive Bearish 3min Candles")
-                return True
-            
-            # WARUNK 5: Spadek poniżej kluczowego support (SMA20 na 3min)
-            sma_20_3min = df_3min['close'].rolling(20).mean().iloc[-2]
-            if last_candle['close'] < sma_20_3min and current_price < sma_20_3min:
-                self.logger.info(f"🔴 Price below 3min SMA20: {last_candle['close']:.4f} < {sma_20_3min:.4f}")
-                return True
-                
             return False
             
         except Exception as e:
             self.logger.error(f"❌ Error in 3min candle analysis for {symbol}: {e}")
             return False
 
-    def calculate_position_size(self, symbol: str, price: float, confidence: float):
-        """Calculate position size (max 5% of capital)"""
-        base_quantity = self.position_sizes.get(symbol, 1000.0)
+    def calculate_breakout_exit_levels(self, entry_price: float, resistance_level: float) -> Dict:
+        """Oblicza poziomy wyjścia dla strategii breakout"""
+        # Dla breakout: agresywniejszy TP, tighter SL
+        take_profit = entry_price * 1.08   # 8% TP dla breakout
+        stop_loss = resistance_level * 0.98  # SL tuż poniżej breakout level
+        invalidation = entry_price * 0.96   # 4% invalidation
         
-        confidence_multiplier = 0.3 + (confidence * 0.7)
-        position_value = (self.virtual_capital * self.position_size_percentage) * confidence_multiplier
-        adjusted_quantity = position_value / price
-        
-        final_quantity = min(base_quantity, adjusted_quantity)
-        position_value = final_quantity * price
-        margin_required = position_value / self.leverage
-        
-        return final_quantity, position_value, margin_required
+        return {
+            'take_profit': take_profit,
+            'stop_loss': stop_loss,
+            'invalidation': invalidation
+        }
 
-    def calculate_exit_levels(self, entry_price: float):
-        """Calculate exit levels based on your strategy"""
-        take_profit = entry_price * 1.15
-        stop_loss = entry_price * 0.95
-        invalidation = entry_price * 0.9375
-        
-        return take_profit, stop_loss, invalidation
-
-    def open_position(self, symbol: str, side: str):
-        """Open a new position with enhanced logging"""
+    def open_breakout_position(self, symbol: str):
+        """Otwiera pozycję breakout"""
         current_price = self.get_current_price(symbol)
         if not current_price:
             return None
         
-        signal, confidence = self.generate_ml_signal(symbol)
-        if signal != "LONG" or confidence < 0.65:
+        signal, confidence = self.generate_breakout_signal(symbol)
+        if signal not in ["BREAKOUT_LONG", "LONG"] or confidence < 0.65:
             return None
         
+        # Sprawdź limit aktywnych pozycji
         active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
         if active_positions >= self.max_simultaneous_positions:
             self.logger.info(f"⏹️ Max positions reached ({active_positions}/{self.max_simultaneous_positions})")
             return None
         
-        quantity, position_value, margin_required = self.calculate_position_size(
+        # Oblicz wielkość pozycji zgodnie z alokacją
+        quantity, position_value, margin_required = self.calculate_breakout_position_size(
             symbol, current_price, confidence
         )
         
@@ -390,15 +394,26 @@ class MLTradingBot:
             self.logger.warning(f"💰 Insufficient balance for {symbol}")
             return None
         
-        take_profit, stop_loss, invalidation = self.calculate_exit_levels(current_price)
+        # Oblicz poziomy wyjścia
+        is_breakout = signal == "BREAKOUT_LONG"
+        if is_breakout:
+            _, _, resistance_level = self.detect_breakout_signal(symbol)
+            exit_levels = self.calculate_breakout_exit_levels(current_price, resistance_level)
+        else:
+            exit_levels = {
+                'take_profit': current_price * 1.10,  # 10% TP
+                'stop_loss': current_price * 0.95,    # 5% SL
+                'invalidation': current_price * 0.93  # 7% invalidation
+            }
+        
         liquidation_price = current_price * (1 - 0.9 / self.leverage)
         
-        position_id = f"ml_pos_{self.position_id}"
+        position_id = f"breakout_{self.position_id}"
         self.position_id += 1
         
         position = {
             'symbol': symbol,
-            'side': side,
+            'side': 'LONG',
             'entry_price': current_price,
             'quantity': quantity,
             'leverage': self.leverage,
@@ -407,28 +422,33 @@ class MLTradingBot:
             'entry_time': datetime.now(),
             'status': 'ACTIVE',
             'unrealized_pnl': 0,
-            'ml_confidence': confidence,
-            'exit_plan': {
-                'take_profit': take_profit,
-                'stop_loss': stop_loss,
-                'invalidation': invalidation
-            }
+            'confidence': confidence,
+            'strategy': 'BREAKOUT' if is_breakout else 'MOMENTUM',
+            'exit_plan': exit_levels
         }
         
         self.positions[position_id] = position
         self.virtual_balance -= margin_required
         
-        # Enhanced logging with 3min SL info
-        self.logger.info(f"🧠 ML OPEN: {side} {quantity:.4f} {symbol} @ ${current_price:.2f}")
-        self.logger.info(f"   📊 TP: ${take_profit:.2f} | SL: ${stop_loss:.2f} | Margin: ${margin_required:.2f}")
-        self.logger.info(f"   🤖 ML Confidence: {confidence:.1%} | Leverage: {self.leverage}X")
-        self.logger.info(f"   ⚡ Stop Loss: 3min candle analysis ACTIVE")
+        if is_breakout:
+            self.stats['breakout_trades'] += 1
+            self.logger.info(f"🎯 BREAKOUT OPEN: {quantity:.4f} {symbol} @ ${current_price:.2f}")
+        else:
+            self.logger.info(f"📈 MOMENTUM OPEN: {quantity:.4f} {symbol} @ ${current_price:.2f}")
+        
+        self.logger.info(f"   📊 TP: ${exit_levels['take_profit']:.2f} | SL: ${exit_levels['stop_loss']:.2f}")
+        self.logger.info(f"   💰 Position: ${position_value:.2f} ({self.asset_allocation[symbol]*100:.0f}% allocation)")
+        self.logger.info(f"   🤖 Confidence: {confidence:.1%} | Leverage: {self.leverage}X")
         
         return position_id
+
+    # Pozostałe metody pozostają bez zmian (update_positions_pnl, check_exit_conditions, close_position, etc.)
+    # ... [reszta kodu taka sama jak poprzednio]
 
     def update_positions_pnl(self):
         """Update P&L for all positions"""
         total_unrealized = 0
+        total_margin = 0
         
         for position in self.positions.values():
             if position['status'] != 'ACTIVE':
@@ -449,10 +469,18 @@ class MLTradingBot:
             
             position['unrealized_pnl'] = unrealized_pnl
             total_unrealized += unrealized_pnl
+            total_margin += position['margin']
         
         self.dashboard_data['unrealized_pnl'] = total_unrealized
         self.dashboard_data['account_value'] = self.virtual_capital + total_unrealized
         self.dashboard_data['available_cash'] = self.virtual_balance
+        self.dashboard_data['portfolio_diversity'] = self.get_portfolio_diversity()
+        
+        # Oblicz wykorzystanie portfela
+        if self.virtual_capital > 0:
+            portfolio_utilization = (total_margin * self.leverage) / (self.virtual_capital * self.leverage)
+            self.stats['portfolio_utilization'] = portfolio_utilization
+        
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
@@ -469,7 +497,7 @@ class MLTradingBot:
             
             exit_reason = None
             
-            # Take Profit (15%)
+            # Take Profit
             if current_price >= position['exit_plan']['take_profit']:
                 exit_reason = "TAKE_PROFIT"
             
@@ -477,11 +505,11 @@ class MLTradingBot:
             elif self.should_close_based_on_3min_candle(position['symbol'], position):
                 exit_reason = "STOP_LOSS_3MIN"
             
-            # Classic Stop Loss (5%) - backup
+            # Classic Stop Loss
             elif current_price <= position['exit_plan']['stop_loss']:
                 exit_reason = "STOP_LOSS_CLASSIC"
             
-            # Invalidation (6.25%)
+            # Invalidation
             elif current_price <= position['exit_plan']['invalidation']:
                 exit_reason = "INVALIDATION"
             
@@ -519,7 +547,8 @@ class MLTradingBot:
             'quantity': position['quantity'],
             'realized_pnl': realized_pnl_after_fee,
             'exit_reason': exit_reason,
-            'ml_confidence': position.get('ml_confidence', 0),
+            'strategy': position.get('strategy', 'MOMENTUM'),
+            'confidence': position.get('confidence', 0),
             'entry_time': position['entry_time'],
             'exit_time': datetime.now()
         }
@@ -538,11 +567,14 @@ class MLTradingBot:
         self.dashboard_data['net_realized'] = self.stats['total_pnl']
         
         pnl_color = "🟢" if realized_pnl_after_fee > 0 else "🔴"
-        self.logger.info(f"{pnl_color} ML CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
+        strategy_icon = "🎯" if position.get('strategy') == 'BREAKOUT' else "📈"
+        self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
 
     def get_dashboard_data(self):
         """Prepare dashboard data"""
         active_positions = []
+        total_confidence = 0
+        confidence_count = 0
         
         for position in self.positions.values():
             if position['status'] == 'ACTIVE':
@@ -555,8 +587,19 @@ class MLTradingBot:
                     'margin': position['margin'],
                     'unrealized_pnl': position['unrealized_pnl'],
                     'symbol': position['symbol'],
-                    'confidence': position.get('ml_confidence', 0)
+                    'confidence': position.get('confidence', 0),
+                    'strategy': position.get('strategy', 'MOMENTUM')
                 })
+        
+        # Oblicz średnią confidence
+        for symbol in self.priority_symbols:
+            signal, confidence = self.generate_breakout_signal(symbol)
+            if confidence > 0:
+                total_confidence += confidence
+                confidence_count += 1
+        
+        if confidence_count > 0:
+            self.dashboard_data['average_confidence'] = round((total_confidence / confidence_count) * 100, 1)
         
         recent_trades = []
         for trade in self.trade_history[-10:]:
@@ -568,8 +611,9 @@ class MLTradingBot:
                 'quantity': trade['quantity'],
                 'realized_pnl': trade['realized_pnl'],
                 'exit_reason': trade['exit_reason'],
+                'strategy': trade.get('strategy', 'MOMENTUM'),
                 'exit_time': trade['exit_time'].strftime('%H:%M:%S'),
-                'confidence': trade.get('ml_confidence', 0)
+                'confidence': trade.get('confidence', 0)
             })
         
         total_trades = self.stats['total_trades']
@@ -585,20 +629,26 @@ class MLTradingBot:
             'performance_metrics': {
                 'avg_leverage': self.dashboard_data['average_leverage'],
                 'avg_confidence': self.dashboard_data['average_confidence'],
-                'ml_accuracy': self.dashboard_data['ml_accuracy'],
+                'portfolio_diversity': round(self.dashboard_data['portfolio_diversity'] * 100, 1),
+                'portfolio_utilization': round(self.stats['portfolio_utilization'] * 100, 1),
+                'breakout_trades': self.stats['breakout_trades'],
                 'win_rate': round(win_rate, 1),
                 'total_trades': total_trades
             },
+            'asset_allocation': self.asset_allocation,
             'active_positions': active_positions,
             'recent_trades': recent_trades,
             'total_unrealized_pnl': round(self.dashboard_data['unrealized_pnl'], 2),
             'last_update': self.dashboard_data['last_update'].isoformat()
         }
 
-    def run_ml_strategy(self):
-        """Main ML trading loop"""
-        self.logger.info("🚀 STARTING ML TRADING STRATEGY...")
-        self.logger.info("⚡ 3min Candle Stop Loss Analysis: ACTIVE")
+    def run_breakout_strategy(self):
+        """Główna pętla strategii breakout"""
+        self.logger.info("🚀 STARTING BREAKOUT TRADING STRATEGY...")
+        self.logger.info("📊 Portfolio Allocation:")
+        for symbol, allocation in self.asset_allocation.items():
+            self.logger.info(f"   {symbol}: {allocation*100:.1f}%")
+        self.logger.info("⚡ Breakout Detection + 3min Candle Analysis ACTIVE")
         
         iteration = 0
         while self.is_running:
@@ -606,50 +656,62 @@ class MLTradingBot:
                 iteration += 1
                 current_time = datetime.now().strftime('%H:%M:%S')
                 
-                self.logger.info(f"\n🔄 ML Iteration #{iteration} | {current_time}")
+                self.logger.info(f"\n🔄 Breakout Iteration #{iteration} | {current_time}")
                 
+                # 1. Aktualizuj P&L
                 self.update_positions_pnl()
                 
+                # 2. Sprawdź warunki wyjścia
                 positions_to_close = self.check_exit_conditions()
                 for position_id, exit_reason, exit_price in positions_to_close:
                     self.close_position(position_id, exit_reason, exit_price)
                 
+                # 3. Sprawdź sygnały breakout dla każdego assetu
                 active_symbols = [p['symbol'] for p in self.positions.values() if p['status'] == 'ACTIVE']
                 active_count = len(active_symbols)
                 
                 if active_count < self.max_simultaneous_positions:
                     for symbol in self.priority_symbols:
                         if symbol not in active_symbols:
-                            signal, confidence = self.generate_ml_signal(symbol)
+                            signal, confidence = self.generate_breakout_signal(symbol)
                             
-                            if signal == "LONG" and confidence >= 0.65:
-                                self.logger.info(f"🧠 ML SIGNAL: {symbol} - Confidence: {confidence:.1%}")
-                                position_id = self.open_position(symbol, "LONG")
+                            if signal in ["BREAKOUT_LONG", "LONG"] and confidence >= 0.65:
+                                if signal == "BREAKOUT_LONG":
+                                    self.logger.info(f"🎯 STRONG BREAKOUT: {symbol} - Confidence: {confidence:.1%}")
+                                else:
+                                    self.logger.info(f"📈 MOMENTUM SIGNAL: {symbol} - Confidence: {confidence:.1%}")
+                                
+                                position_id = self.open_breakout_position(symbol)
                                 if position_id:
-                                    time.sleep(2)
+                                    time.sleep(1)  # Małe opóźnienie między pozycjami
                 
-                total_trades = self.stats['total_trades']
-                win_rate = (self.stats['winning_trades'] / total_trades * 100) if total_trades > 0 else 0
-                self.logger.info(f"📊 ML Status: {active_count} positions | Win Rate: {win_rate:.1f}%")
+                # 4. Loguj status portfela
+                portfolio_value = self.dashboard_data['account_value']
+                diversity = self.dashboard_data['portfolio_diversity'] * 100
+                utilization = self.stats['portfolio_utilization'] * 100
                 
+                self.logger.info(f"📊 Portfolio: ${portfolio_value:.2f} | Positions: {active_count}/{self.max_simultaneous_positions}")
+                self.logger.info(f"🌐 Diversity: {diversity:.1f}% | Utilization: {utilization:.1f}%")
+                
+                # 5. Czekaj 60 sekund
                 for i in range(60):
                     if not self.is_running:
                         break
                     time.sleep(1)
                 
             except Exception as e:
-                self.logger.error(f"❌ Error in ML trading loop: {e}")
+                self.logger.error(f"❌ Error in breakout trading loop: {e}")
                 time.sleep(30)
 
     def start_trading(self):
-        """Start ML trading"""
+        """Start breakout trading"""
         self.is_running = True
-        self.run_ml_strategy()
+        self.run_breakout_strategy()
 
     def stop_trading(self):
-        """Stop ML trading"""
+        """Stop breakout trading"""
         self.is_running = False
-        self.logger.info("🛑 ML Trading stopped")
+        self.logger.info("🛑 Breakout Trading stopped")
 
 # Global ML bot instance
-ml_trading_bot = MLTradingBot(initial_capital=50000, leverage=10)
+ml_trading_bot = MLTradingBot(initial_capital=10000, leverage=10)
