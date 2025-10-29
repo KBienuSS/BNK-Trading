@@ -790,20 +790,39 @@
         }
 
         // Aktualizuj dashboard
-        function updateDashboard(data) {
+        // Aktualizuj dashboard - PEŁNA NAPRAWIONA WERSJA
+function updateDashboard(data) {
     console.log('🔄 Dashboard update:', data);
     const now = new Date().toLocaleTimeString();
     
-    // Account Summary
-    document.getElementById('total-value').textContent = '$' + (data.account_summary?.total_value || 0).toLocaleString();
-    document.getElementById('available-cash').textContent = '$' + (data.account_summary?.available_cash || 0).toLocaleString();
-    document.getElementById('total-fees').textContent = '$' + (data.account_summary?.total_fees || 0).toLocaleString();
-    
-    const netRealizedElem = document.getElementById('net-realized');
-    netRealizedElem.textContent = '$' + (data.account_summary?.net_realized || 0).toLocaleString();
-    netRealizedElem.className = (data.account_summary?.net_realized || 0) >= 0 ? 'summary-value profit' : 'summary-value loss';
-    
-    // Active Positions - NAPRAWIONE
+    // Account Summary - POPRAWIONE
+    if (data.account_summary) {
+        document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        
+        const netRealizedElem = document.getElementById('net-realized');
+        netRealizedElem.textContent = '$' + (data.account_summary.net_realized || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        netRealizedElem.className = (data.account_summary.net_realized || 0) >= 0 ? 'summary-value profit' : 'summary-value loss';
+    }
+    document.getElementById('account-update').textContent = `Last update: ${now}`;
+
+    // Performance Metrics - POPRAWIONE
+    if (data.performance_metrics) {
+        document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
+        
+        // Total Return % - oblicz na podstawie total_value
+        const totalValue = data.account_summary?.total_value || 10000;
+        const totalReturn = ((totalValue - 10000) / 10000) * 100;
+        const totalReturnElem = document.getElementById('total-return');
+        totalReturnElem.textContent = totalReturn.toFixed(2) + '%';
+        totalReturnElem.className = totalReturn >= 0 ? 'metric-value profit' : 'metric-value loss';
+        
+        document.getElementById('biggest-win').textContent = '$' + (data.performance_metrics.biggest_win || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    // Active Positions - NAPRAWIONE (to już działa)
     const positionsBody = document.getElementById('positions-body');
     positionsBody.innerHTML = '';
     
@@ -833,6 +852,46 @@
     } else {
         positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
     }
+
+    // Total Unrealized P&L
+    const totalUnrealizedElem = document.getElementById('total-unrealized');
+    totalUnrealizedElem.textContent = '$' + (data.total_unrealized_pnl || 0).toFixed(2);
+    totalUnrealizedElem.className = (data.total_unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
+    document.getElementById('positions-update').textContent = `Last update: ${now}`;
+
+    // Confidence Levels
+    updateConfidenceLevels(data.confidence_levels || {});
+    document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+
+    // Recent Trades
+    const tradesBody = document.getElementById('trades-body');
+    tradesBody.innerHTML = '';
+    
+    if (data.recent_trades && data.recent_trades.length > 0) {
+        data.recent_trades.forEach(trade => {
+            const row = document.createElement('tr');
+            const pnlClass = trade.realized_pnl >= 0 ? 'profit' : 'loss';
+            
+            row.innerHTML = `
+                <td>${trade.exit_time}</td>
+                <td><strong>${trade.symbol}</strong></td>
+                <td>${trade.side}</td>
+                <td>$${trade.entry_price.toFixed(4)}</td>
+                <td>$${trade.exit_price.toFixed(4)}</td>
+                <td>${trade.quantity.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                <td class="${pnlClass}">$${trade.realized_pnl.toFixed(2)}</td>
+                <td>${trade.exit_reason || 'MANUAL'}</td>
+            `;
+            tradesBody.appendChild(row);
+        });
+    } else {
+        tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
+    }
+    document.getElementById('trades-update').textContent = `Last update: ${now}`;
+
+    // Aktualizuj wykres
+    updateChart(data);
+}
 
             // Total Unrealized P&L
             const totalUnrealizedElem = document.getElementById('total-unrealized');
