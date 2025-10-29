@@ -54,10 +54,12 @@ class MLTradingBot:
             'BNBUSDT': 7.036,
             'XRPUSDT': 1737.0,
             'DOGEUSDT': 27858.0,
-            'SOLUSDT': 20.76
+            'SOLUSDT': 20.76,
+            'ADAUSDT': 5000.0,
+            'DOTUSDT': 200.0
         }
         
-        self.priority_symbols = ['ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'BTCUSDT', 'DOGEUSDT']
+        self.priority_symbols = ['ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'BTCUSDT', 'DOGEUSDT', 'ADAUSDT', 'DOTUSDT']
         
         # Statistics
         self.stats = {
@@ -88,6 +90,7 @@ class MLTradingBot:
         
         self.logger.info("🧠 ML TRADING BOT INITIALIZED")
         self.logger.info(f"💰 Initial capital: ${initial_capital}")
+        self.logger.info("⚡ 3min Candle Stop Loss Analysis: ACTIVE")
 
     def initialize_ml_model(self):
         """Initialize ML model with Random Forest"""
@@ -204,7 +207,7 @@ class MLTradingBot:
                 
         except Exception as e:
             self.logger.error(f"❌ Error in ML signal generation: {e}")
-            return self.fallback_signal(df)
+            return "HOLD", 0.5
 
     def fallback_signal(self, df: pd.DataFrame) -> Tuple[str, float]:
         """Fallback traditional strategy when ML is not available"""
@@ -283,6 +286,65 @@ class MLTradingBot:
             self.logger.error(f"❌ Error fetching price for {symbol}: {e}")
             return None
 
+    def should_close_based_on_3min_candle(self, symbol: str, position: dict) -> bool:
+        """Sprawdza czy zamknięcie 3-minutowej świecy wymaga zamknięcia pozycji"""
+        try:
+            # Pobierz 5 ostatnich 3-minutowych świec
+            df_3min = self.get_binance_klines(symbol, '3m', 5)
+            if df_3min is None or len(df_3min) < 3:
+                return False
+            
+            # Analiza ostatniej zamkniętej świecy
+            last_candle = df_3min.iloc[-2]  # -2 bo -1 może być jeszcze otwarta
+            current_price = df_3min['close'].iloc[-1]
+            
+            stop_loss_price = position['exit_plan']['stop_loss']
+            entry_price = position['entry_price']
+            
+            # WARUNK 1: Zamknięcie poniżej Stop Loss
+            if last_candle['close'] <= stop_loss_price:
+                self.logger.info(f"🔴 3min Candle CLOSE below SL: {last_candle['close']:.4f} <= {stop_loss_price:.4f}")
+                return True
+            
+            # WARUNK 2: Silny bearish pattern
+            candle_size = abs(last_candle['close'] - last_candle['open'])
+            avg_candle_size = abs(df_3min['close'] - df_3min['open']).tail(10).mean()
+            
+            # Sprawdź czy świeca jest bearish (czerwona)
+            is_bearish = last_candle['close'] < last_candle['open']
+            
+            # Sprawdź czy świeca jest duża (więcej niż 1.5x średniej)
+            is_large_candle = candle_size > (avg_candle_size * 1.5) if avg_candle_size > 0 else False
+            
+            # Sprawdź czy cena jest poniżej entry
+            below_entry = last_candle['close'] < entry_price
+            
+            # WARUNK 3: Duża bearish świeca poniżej entry price
+            if is_bearish and is_large_candle and below_entry:
+                self.logger.info(f"🔴 Large Bearish 3min Candle: size={candle_size:.4f}, close={last_candle['close']:.4f}")
+                return True
+            
+            # WARUNK 4: Konsekwentny spadek (2-3 bearish świece z rzędu)
+            recent_candles = df_3min.tail(3)
+            bearish_count = sum(1 for _, candle in recent_candles.iterrows() 
+                              if candle['close'] < candle['open'])
+            
+            if bearish_count >= 2 and last_candle['close'] < entry_price:
+                self.logger.info(f"🔴 {bearish_count} consecutive Bearish 3min Candles")
+                return True
+            
+            # WARUNK 5: Spadek poniżej kluczowego support (SMA20 na 3min)
+            sma_20_3min = df_3min['close'].rolling(20).mean().iloc[-2]
+            if last_candle['close'] < sma_20_3min and current_price < sma_20_3min:
+                self.logger.info(f"🔴 Price below 3min SMA20: {last_candle['close']:.4f} < {sma_20_3min:.4f}")
+                return True
+                
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error in 3min candle analysis for {symbol}: {e}")
+            return False
+
     def calculate_position_size(self, symbol: str, price: float, confidence: float):
         """Calculate position size (max 5% of capital)"""
         base_quantity = self.position_sizes.get(symbol, 1000.0)
@@ -306,7 +368,7 @@ class MLTradingBot:
         return take_profit, stop_loss, invalidation
 
     def open_position(self, symbol: str, side: str):
-        """Open a new position"""
+        """Open a new position with enhanced logging"""
         current_price = self.get_current_price(symbol)
         if not current_price:
             return None
@@ -356,8 +418,11 @@ class MLTradingBot:
         self.positions[position_id] = position
         self.virtual_balance -= margin_required
         
+        # Enhanced logging with 3min SL info
         self.logger.info(f"🧠 ML OPEN: {side} {quantity:.4f} {symbol} @ ${current_price:.2f}")
-        self.logger.info(f"   🤖 ML Confidence: {confidence:.1%} | Margin: ${margin_required:.2f}")
+        self.logger.info(f"   📊 TP: ${take_profit:.2f} | SL: ${stop_loss:.2f} | Margin: ${margin_required:.2f}")
+        self.logger.info(f"   🤖 ML Confidence: {confidence:.1%} | Leverage: {self.leverage}X")
+        self.logger.info(f"   ⚡ Stop Loss: 3min candle analysis ACTIVE")
         
         return position_id
 
@@ -391,7 +456,7 @@ class MLTradingBot:
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
-        """Check exit conditions for all positions"""
+        """Check exit conditions with 3-minute candle analysis"""
         positions_to_close = []
         
         for position_id, position in self.positions.items():
@@ -404,15 +469,25 @@ class MLTradingBot:
             
             exit_reason = None
             
-            if position['side'] == 'LONG':
-                if current_price >= position['exit_plan']['take_profit']:
-                    exit_reason = "TAKE_PROFIT"
-                elif current_price <= position['exit_plan']['stop_loss']:
-                    exit_reason = "STOP_LOSS"
-                elif current_price <= position['exit_plan']['invalidation']:
-                    exit_reason = "INVALIDATION"
-                elif current_price <= position['liquidation_price']:
-                    exit_reason = "LIQUIDATION"
+            # Take Profit (15%)
+            if current_price >= position['exit_plan']['take_profit']:
+                exit_reason = "TAKE_PROFIT"
+            
+            # Stop Loss with 3-minute candle analysis
+            elif self.should_close_based_on_3min_candle(position['symbol'], position):
+                exit_reason = "STOP_LOSS_3MIN"
+            
+            # Classic Stop Loss (5%) - backup
+            elif current_price <= position['exit_plan']['stop_loss']:
+                exit_reason = "STOP_LOSS_CLASSIC"
+            
+            # Invalidation (6.25%)
+            elif current_price <= position['exit_plan']['invalidation']:
+                exit_reason = "INVALIDATION"
+            
+            # Liquidation
+            elif current_price <= position['liquidation_price']:
+                exit_reason = "LIQUIDATION"
             
             if exit_reason:
                 positions_to_close.append((position_id, exit_reason, current_price))
@@ -523,6 +598,7 @@ class MLTradingBot:
     def run_ml_strategy(self):
         """Main ML trading loop"""
         self.logger.info("🚀 STARTING ML TRADING STRATEGY...")
+        self.logger.info("⚡ 3min Candle Stop Loss Analysis: ACTIVE")
         
         iteration = 0
         while self.is_running:
