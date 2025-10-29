@@ -324,6 +324,43 @@
             gap: 20px;
         }
         
+        .confidence-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .confidence-item {
+            background-color: var(--accent-color);
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .confidence-symbol {
+            font-size: 14px;
+            color: #a0a0a0;
+            margin-bottom: 5px;
+        }
+        
+        .confidence-value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .confidence-high {
+            color: #4caf50;
+        }
+        
+        .confidence-medium {
+            color: #ff9800;
+        }
+        
+        .confidence-low {
+            color: #f44336;
+        }
+        
         @media (max-width: 1200px) {
             .top-row {
                 grid-template-columns: 1fr;
@@ -336,6 +373,10 @@
             .header-right {
                 flex-direction: column;
                 gap: 10px;
+            }
+            
+            .confidence-grid {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
         
@@ -365,6 +406,10 @@
             
             .btc-price {
                 font-size: 14px;
+            }
+            
+            .confidence-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -426,8 +471,8 @@
                             <div class="metric-value" id="avg-leverage">0.0</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-label">Average Confidence</div>
-                            <div class="metric-value" id="avg-confidence">0%</div>
+                            <div class="metric-label">Total Profit %</div>
+                            <div class="metric-value profit" id="total-profit">0.00%</div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-label">Biggest Win</div>
@@ -471,6 +516,38 @@
                     Total Unrealized P&L: <span class="profit" id="total-unrealized">$0.00</span>
                 </div>
                 <div class="last-update" id="positions-update">Last update: --</div>
+            </div>
+            
+            <!-- CONFIDENCE LEVELS - FULL WIDTH -->
+            <div class="card full-width">
+                <h2 class="card-title">Asset Confidence Levels</h2>
+                <div class="confidence-grid" id="confidence-grid">
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BTCUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-btc">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">ETHUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-eth">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">SOLUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-sol">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BNBUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-bnb">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">XRPUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-xrp">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">DOGEUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-doge">0%</div>
+                    </div>
+                </div>
+                <div class="last-update" id="confidence-update">Last update: --</div>
             </div>
             
             <!-- BOTTOM ROW: Account Value Chart + Recent Trades - SAME WIDTH AS ACTIVE POSITIONS -->
@@ -519,6 +596,7 @@
             values: []
         };
         let lastBTCPrice = 0;
+        const initialCapital = 10000; // Kapitał początkowy
 
         // Funkcje do ceny BTC
         async function fetchBTCPrice() {
@@ -662,28 +740,27 @@
             }
         }
 
-        // Pobierz dane z API
         // Pobierz dane z API - Z DODANYM LOGOWANIEM
-async function fetchTradingData() {
-    try {
-        console.log('🔄 Fetching trading data...');
-        const response = await fetch('/api/trading-data');
-        const data = await response.json();
-        
-        if (data.error) {
-            console.error('API Error:', data.error);
-            return;
+        async function fetchTradingData() {
+            try {
+                console.log('🔄 Fetching trading data...');
+                const response = await fetch('/api/trading-data');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('API Error:', data.error);
+                    return;
+                }
+                
+                console.log('✅ Data received - Active positions:', data.active_positions?.length, 'Recent trades:', data.recent_trades?.length);
+                console.log('📊 Full active positions:', data.active_positions);
+                console.log('📈 Full recent trades:', data.recent_trades);
+                
+                updateDashboard(data);
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
         }
-        
-        console.log('✅ Data received - Active positions:', data.active_positions?.length, 'Recent trades:', data.recent_trades?.length);
-        console.log('📊 Full active positions:', data.active_positions);
-        console.log('📈 Full recent trades:', data.recent_trades);
-        
-        updateDashboard(data);
-    } catch (error) {
-        console.error('Error fetching data:', error);
-    }
-}
 
         // Aktualizuj wykres TYLKO po transakcjach
         function updateChart(data) {
@@ -717,112 +794,145 @@ async function fetchTradingData() {
             }
         }
 
-        // Aktualizuj dashboard
+        // Aktualizuj poziomy confidence dla każdej kryptowaluty
+        function updateConfidenceLevels(confidenceData) {
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            
+            symbols.forEach(symbol => {
+                const confidence = confidenceData[symbol] || 0;
+                const element = document.getElementById(`confidence-${symbol.toLowerCase().replace('usdt', '')}`);
+                
+                if (element) {
+                    element.textContent = `${confidence}%`;
+                    
+                    // Ustaw kolor na podstawie poziomu confidence
+                    if (confidence >= 70) {
+                        element.className = 'confidence-value confidence-high';
+                    } else if (confidence >= 40) {
+                        element.className = 'confidence-value confidence-medium';
+                    } else {
+                        element.className = 'confidence-value confidence-low';
+                    }
+                }
+            });
+        }
+
         // Aktualizuj dashboard - NAPRAWIONA WERSJA
-function updateDashboard(data) {
-    console.log('🔄 Dashboard update:', data);
-    const now = new Date().toLocaleTimeString();
-    
-    // Account Summary
-    if (data.account_summary) {
-        document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        
-        // Net Realized - czerwony gdy na minusie
-        const netRealizedElem = document.getElementById('net-realized');
-        const netRealized = data.account_summary.net_realized || 0;
-        netRealizedElem.textContent = '$' + netRealized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        netRealizedElem.className = netRealized >= 0 ? 'summary-value profit' : 'summary-value loss';
-    }
-    document.getElementById('account-update').textContent = `Last update: ${now}`;
-
-    // Performance Metrics
-    if (data.performance_metrics) {
-        document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
-        document.getElementById('avg-confidence').textContent = (data.performance_metrics.avg_confidence || 0) + '%';
-        document.getElementById('biggest-win').textContent = '$' + (data.performance_metrics.biggest_win || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
-
-    // Active Positions - NAPRAWIONE
-    const positionsBody = document.getElementById('positions-body');
-    positionsBody.innerHTML = '';
-    
-    if (data.active_positions && data.active_positions.length > 0) {
-        console.log('📊 Rendering active positions:', data.active_positions);
-        
-        data.active_positions.forEach(position => {
-            const row = document.createElement('tr');
+        function updateDashboard(data) {
+            console.log('🔄 Dashboard update:', data);
+            const now = new Date().toLocaleTimeString();
             
-            // Użyj current_price jeśli istnieje, w przeciwnym razie symuluj małą zmianę
-            const currentPrice = position.current_price || (position.entry_price * (1 + (Math.random() * 0.02 - 0.01)));
-            const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
-            const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
+            // Account Summary - POPRAWIONE Z KOLORAMI
+            if (data.account_summary) {
+                document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                
+                // Net Realized - CZERWONY gdy na minusie
+                const netRealizedElem = document.getElementById('net-realized');
+                const netRealized = data.account_summary.net_realized || 0;
+                netRealizedElem.textContent = '$' + netRealized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                netRealizedElem.className = netRealized >= 0 ? 'summary-value profit' : 'summary-value loss';
+            }
+            document.getElementById('account-update').textContent = `Last update: ${now}`;
+
+            // Performance Metrics - Z TOTAL PROFIT %
+            if (data.performance_metrics) {
+                document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
+                
+                // Total Profit % - oblicz na podstawie kapitału początkowego
+                const totalValue = data.account_summary?.total_value || initialCapital;
+                const totalProfit = ((totalValue - initialCapital) / initialCapital) * 100;
+                const totalProfitElem = document.getElementById('total-profit');
+                totalProfitElem.textContent = totalProfit.toFixed(2) + '%';
+                totalProfitElem.className = totalProfit >= 0 ? 'metric-value profit' : 'metric-value loss';
+                
+                document.getElementById('biggest-win').textContent = '$' + (data.performance_metrics.biggest_win || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+
+            // Active Positions - NAPRAWIONE
+            const positionsBody = document.getElementById('positions-body');
+            positionsBody.innerHTML = '';
             
-            row.innerHTML = `
-                <td>${position.entry_time || 'N/A'}</td>
-                <td><strong>${position.symbol}</strong></td>
-                <td>${position.side || 'LONG'}</td>
-                <td>$${(position.entry_price || 0).toFixed(4)}</td>
-                <td>$${currentPrice.toFixed(4)}</td>
-                <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-                <td>${position.leverage || 1}x</td>
-                <td>$${(position.liquidation_price || 0).toFixed(4)}</td>
-                <td>$${(position.margin || 0).toFixed(2)}</td>
-                <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
-                <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
-                <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
-            `;
-            positionsBody.appendChild(row);
-        });
-    } else {
-        positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
-        console.log('❌ No active positions to display');
-    }
+            if (data.active_positions && data.active_positions.length > 0) {
+                console.log('📊 Rendering active positions:', data.active_positions);
+                
+                data.active_positions.forEach(position => {
+                    const row = document.createElement('tr');
+                    
+                    // Użyj current_price jeśli istnieje, w przeciwnym razie symuluj małą zmianę
+                    const currentPrice = position.current_price || (position.entry_price * (1 + (Math.random() * 0.02 - 0.01)));
+                    const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
+                    const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
+                    
+                    row.innerHTML = `
+                        <td>${position.entry_time || 'N/A'}</td>
+                        <td><strong>${position.symbol}</strong></td>
+                        <td>${position.side || 'LONG'}</td>
+                        <td>$${(position.entry_price || 0).toFixed(4)}</td>
+                        <td>$${currentPrice.toFixed(4)}</td>
+                        <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                        <td>${position.leverage || 1}x</td>
+                        <td>$${(position.liquidation_price || 0).toFixed(4)}</td>
+                        <td>$${(position.margin || 0).toFixed(2)}</td>
+                        <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
+                        <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
+                        <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
+                    `;
+                    positionsBody.appendChild(row);
+                });
+            } else {
+                positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
+                console.log('❌ No active positions to display');
+            }
 
-    // Total Unrealized P&L
-    const totalUnrealizedElem = document.getElementById('total-unrealized');
-    if (data.total_unrealized_pnl !== undefined) {
-        totalUnrealizedElem.textContent = '$' + data.total_unrealized_pnl.toFixed(2);
-        totalUnrealizedElem.className = data.total_unrealized_pnl >= 0 ? 'profit' : 'loss';
-    } else {
-        totalUnrealizedElem.textContent = '$0.00';
-        totalUnrealizedElem.className = 'profit';
-    }
-    document.getElementById('positions-update').textContent = `Last update: ${now}`;
+            // Total Unrealized P&L
+            const totalUnrealizedElem = document.getElementById('total-unrealized');
+            if (data.total_unrealized_pnl !== undefined) {
+                totalUnrealizedElem.textContent = '$' + data.total_unrealized_pnl.toFixed(2);
+                totalUnrealizedElem.className = data.total_unrealized_pnl >= 0 ? 'profit' : 'loss';
+            } else {
+                totalUnrealizedElem.textContent = '$0.00';
+                totalUnrealizedElem.className = 'profit';
+            }
+            document.getElementById('positions-update').textContent = `Last update: ${now}`;
 
-    // Recent Trades - NAPRAWIONE
-    const tradesBody = document.getElementById('trades-body');
-    tradesBody.innerHTML = '';
-    
-    if (data.recent_trades && data.recent_trades.length > 0) {
-        console.log('📈 Rendering recent trades:', data.recent_trades);
-        
-        data.recent_trades.forEach(trade => {
-            const row = document.createElement('tr');
-            const pnlClass = (trade.realized_pnl || 0) >= 0 ? 'profit' : 'loss';
+            // Confidence Levels
+            updateConfidenceLevels(data.confidence_levels || {});
+            document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+
+            // Recent Trades - NAPRAWIONE
+            const tradesBody = document.getElementById('trades-body');
+            tradesBody.innerHTML = '';
             
-            row.innerHTML = `
-                <td>${trade.exit_time || 'N/A'}</td>
-                <td><strong>${trade.symbol}</strong></td>
-                <td>${trade.side || 'LONG'}</td>
-                <td>$${(trade.entry_price || 0).toFixed(4)}</td>
-                <td>$${(trade.exit_price || 0).toFixed(4)}</td>
-                <td>${(trade.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-                <td class="${pnlClass}">$${(trade.realized_pnl || 0).toFixed(2)}</td>
-                <td>${trade.exit_reason || 'MANUAL'}</td>
-            `;
-            tradesBody.appendChild(row);
-        });
-    } else {
-        tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
-    }
-    document.getElementById('trades-update').textContent = `Last update: ${now}`;
+            if (data.recent_trades && data.recent_trades.length > 0) {
+                console.log('📈 Rendering recent trades:', data.recent_trades);
+                
+                data.recent_trades.forEach(trade => {
+                    const row = document.createElement('tr');
+                    const pnlClass = (trade.realized_pnl || 0) >= 0 ? 'profit' : 'loss';
+                    
+                    row.innerHTML = `
+                        <td>${trade.exit_time || 'N/A'}</td>
+                        <td><strong>${trade.symbol}</strong></td>
+                        <td>${trade.side || 'LONG'}</td>
+                        <td>$${(trade.entry_price || 0).toFixed(4)}</td>
+                        <td>$${(trade.exit_price || 0).toFixed(4)}</td>
+                        <td>${(trade.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                        <td class="${pnlClass}">$${(trade.realized_pnl || 0).toFixed(2)}</td>
+                        <td>${trade.exit_reason || 'MANUAL'}</td>
+                    `;
+                    tradesBody.appendChild(row);
+                });
+            } else {
+                tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
+            }
+            document.getElementById('trades-update').textContent = `Last update: ${now}`;
 
-    // Aktualizuj wykres
-    updateChart(data);
-}
+            // Aktualizuj wykres
+            updateChart(data);
+        }
 
         // Kontrola bota
         async function startBot() {
