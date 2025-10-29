@@ -712,6 +712,47 @@ class MLTradingBot:
         """Stop breakout trading"""
         self.is_running = False
         self.logger.info("🛑 Breakout Trading stopped")
+        
+    def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
+        """Fetch data from Binance"""
+        try:
+            url = "https://api.binance.com/api/v3/klines"
+            params = {
+                'symbol': symbol,
+                'interval': interval,
+                'limit': limit
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            data = response.json()
+            
+            df = pd.DataFrame(data, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_volume', 'trades', 'taker_buy_base', 
+                'taker_buy_quote', 'ignore'
+            ])
+            
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            return df
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching data for {symbol}: {e}")
+            return None
+
+    def get_current_price(self, symbol: str):
+        """Get current price"""
+        try:
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            return float(data['price'])
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching price for {symbol}: {e}")
+            return None
 
 # Global ML bot instance
 ml_trading_bot = MLTradingBot(initial_capital=10000, leverage=10)
