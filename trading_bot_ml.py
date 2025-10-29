@@ -784,35 +784,61 @@ class MLTradingBot:
         self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
 
     def get_dashboard_data(self):
-        """Prepare dashboard data"""
+        """Prepare dashboard data - ZAKTUALIZOWANA WERSJA Z CONFIDENCE LEVELS"""
         active_positions = []
         total_confidence = 0
         confidence_count = 0
         
-        for position in self.positions.values():
+        # Pobierz aktualne ceny dla wszystkich aktywnych pozycji
+        for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
+                current_price = self.get_current_price(position['symbol'])
+                
+                # Oblicz unrealized PnL
+                if position['side'] == 'LONG':
+                    pnl_pct = (current_price - position['entry_price']) / position['entry_price']
+                    unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
+                else:
+                    pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
+                    unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
+                
                 active_positions.append({
+                    'position_id': position_id,
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
+                    'symbol': position['symbol'],
+                    'side': position['side'],
                     'entry_price': position['entry_price'],
+                    'current_price': current_price,  # WAŻNE: dodaj to pole!
                     'quantity': position['quantity'],
                     'leverage': position['leverage'],
                     'liquidation_price': position['liquidation_price'],
                     'margin': position['margin'],
-                    'unrealized_pnl': position['unrealized_pnl'],
-                    'symbol': position['symbol'],
+                    'unrealized_pnl': unrealized_pnl,
                     'confidence': position.get('confidence', 0),
                     'strategy': position.get('strategy', 'MOMENTUM')
                 })
         
-        # Oblicz średnią confidence
+        # ⭐⭐⭐ DODAJ TĘ SEKCJĘ - CONFIDENCE LEVELS DLA KAŻDEGO ASSETU ⭐⭐⭐
+        confidence_levels = {}
         for symbol in self.priority_symbols:
-            signal, confidence = self.generate_breakout_signal(symbol)
-            if confidence > 0:
-                total_confidence += confidence
-                confidence_count += 1
+            try:
+                signal, confidence = self.generate_breakout_signal(symbol)
+                confidence_percent = round(confidence * 100, 1)
+                confidence_levels[symbol] = confidence_percent
+                
+                # Do obliczenia średniej confidence
+                if confidence > 0:
+                    total_confidence += confidence
+                    confidence_count += 1
+                    
+                self.logger.info(f"🔮 {symbol} Confidence: {confidence_percent}%")
+                
+            except Exception as e:
+                self.logger.error(f"❌ Error calculating confidence for {symbol}: {e}")
+                confidence_levels[symbol] = 0
         
-        if confidence_count > 0:
-            self.dashboard_data['average_confidence'] = round((total_confidence / confidence_count) * 100, 1)
+        # Oblicz średnią confidence
+        avg_confidence = round((total_confidence / confidence_count * 100), 1) if confidence_count > 0 else 0
         
         recent_trades = []
         for trade in self.trade_history[-10:]:
@@ -832,6 +858,9 @@ class MLTradingBot:
         total_trades = self.stats['total_trades']
         win_rate = (self.stats['winning_trades'] / total_trades * 100) if total_trades > 0 else 0
         
+        # Oblicz całkowity zwrot
+        total_return_pct = ((self.dashboard_data['account_value'] - 10000) / 10000) * 100
+        
         return {
             'account_summary': {
                 'total_value': round(self.dashboard_data['account_value'], 2),
@@ -840,20 +869,23 @@ class MLTradingBot:
                 'net_realized': round(self.dashboard_data['net_realized'], 2)
             },
             'performance_metrics': {
-                'avg_leverage': self.dashboard_data['average_leverage'],
-                'avg_confidence': self.dashboard_data['average_confidence'],
+                'avg_leverage': self.leverage,
+                'total_return_pct': round(total_return_pct, 2),
                 'portfolio_diversity': round(self.dashboard_data['portfolio_diversity'] * 100, 1),
                 'portfolio_utilization': round(self.stats['portfolio_utilization'] * 100, 1),
                 'breakout_trades': self.stats['breakout_trades'],
                 'win_rate': round(win_rate, 1),
-                'total_trades': total_trades
+                'total_trades': total_trades,
+                'biggest_win': self.stats['biggest_win'],
+                'biggest_loss': self.stats['biggest_loss'],
+                'avg_confidence': avg_confidence  # Zachowaj średnią dla kompatybilności
             },
-            'asset_allocation': self.asset_allocation,
+            'confidence_levels': confidence_levels,  # ⭐⭐⭐ NOWE: confidence dla każdego assetu ⭐⭐⭐
             'active_positions': active_positions,
             'recent_trades': recent_trades,
             'total_unrealized_pnl': round(self.dashboard_data['unrealized_pnl'], 2),
             'last_update': self.dashboard_data['last_update'].isoformat()
-        }
+    }
 
     def run_breakout_strategy(self):
         """Główna pętla strategii breakout"""
