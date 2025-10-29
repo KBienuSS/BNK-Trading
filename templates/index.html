@@ -14,6 +14,7 @@
             --profit-color: #4caf50;
             --loss-color: #f44336;
             --border-color: #2d4059;
+            --btc-color: #f7931a;
         }
         
         * {
@@ -48,6 +49,55 @@
             font-size: 24px;
             font-weight: bold;
             color: #4cc9f0;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .btc-price-widget {
+            background: linear-gradient(135deg, #f7931a, #ffb357);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(247, 147, 26, 0.3);
+            min-width: 180px;
+            text-align: center;
+            animation: glow 2s infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { box-shadow: 0 4px 12px rgba(247, 147, 26, 0.3); }
+            to { box-shadow: 0 4px 20px rgba(247, 147, 26, 0.6); }
+        }
+        
+        .btc-price {
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .btc-icon {
+            font-size: 18px;
+        }
+        
+        .btc-change {
+            font-size: 12px;
+            margin-top: 2px;
+            font-weight: normal;
+        }
+        
+        .positive-change {
+            color: #4caf50;
+        }
+        
+        .negative-change {
+            color: #f44336;
         }
         
         .live-indicator {
@@ -282,6 +332,11 @@
             .bottom-row {
                 grid-template-columns: 1fr;
             }
+            
+            .header-right {
+                flex-direction: column;
+                gap: 10px;
+            }
         }
         
         @media (max-width: 768px) {
@@ -302,6 +357,15 @@
             .trades-table td {
                 padding: 8px 4px;
             }
+            
+            .btc-price-widget {
+                min-width: 150px;
+                padding: 6px 12px;
+            }
+            
+            .btc-price {
+                font-size: 14px;
+            }
         }
     </style>
 </head>
@@ -309,11 +373,22 @@
     <div class="container">
         <header>
             <div class="logo">BNK Trading - DEEPSEEK CHAT</div>
-            <div class="controls">
-                <div class="live-indicator" id="status-indicator">LIVE</div>
-                <button class="control-btn start" onclick="startBot()">▶ Start Bot</button>
-                <button class="control-btn stop" onclick="stopBot()">⏹ Stop Bot</button>
-                <button class="control-btn" onclick="forceUpdate()">🔄 Update</button>
+            <div class="header-right">
+                <!-- DODANY DIV Z CENĄ BTC -->
+                <div class="btc-price-widget" id="btcWidget">
+                    <div class="btc-price">
+                        <span class="btc-icon">₿</span>
+                        <span id="btcPrice">Ładowanie...</span>
+                    </div>
+                    <div class="btc-change" id="btcChange"></div>
+                </div>
+                
+                <div class="controls">
+                    <div class="live-indicator" id="status-indicator">LIVE</div>
+                    <button class="control-btn start" onclick="startBot()">▶ Start Bot</button>
+                    <button class="control-btn stop" onclick="stopBot()">⏹ Stop Bot</button>
+                    <button class="control-btn" onclick="forceUpdate()">🔄 Update</button>
+                </div>
             </div>
         </header>
         
@@ -443,6 +518,55 @@
             labels: [],
             values: []
         };
+        let lastBTCPrice = 0;
+
+        // Funkcje do ceny BTC
+        async function fetchBTCPrice() {
+            try {
+                const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+                const data = await response.json();
+                const currentPrice = parseFloat(data.price);
+                
+                updateBTCPriceDisplay(currentPrice);
+                lastBTCPrice = currentPrice;
+                
+            } catch (error) {
+                console.error('Błąd pobierania ceny BTC:', error);
+                document.getElementById('btcPrice').textContent = 'Error';
+                document.getElementById('btcPrice').style.color = '#ff4444';
+            }
+        }
+
+        function updateBTCPriceDisplay(currentPrice) {
+            const priceElement = document.getElementById('btcPrice');
+            const changeElement = document.getElementById('btcChange');
+            
+            // Formatowanie ceny
+            const formattedPrice = currentPrice.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+            
+            priceElement.textContent = `$${formattedPrice}`;
+            priceElement.style.color = '#ffffff';
+            
+            // Obliczanie zmiany ceny
+            if (lastBTCPrice > 0) {
+                const change = currentPrice - lastBTCPrice;
+                const changePercent = (change / lastBTCPrice) * 100;
+                
+                if (change > 0) {
+                    changeElement.innerHTML = `+$${change.toFixed(2)} <span class="positive-change">(+${changePercent.toFixed(2)}%)</span>`;
+                    changeElement.className = 'btc-change positive-change';
+                } else if (change < 0) {
+                    changeElement.innerHTML = `-$${Math.abs(change).toFixed(2)} <span class="negative-change">(${changePercent.toFixed(2)}%)</span>`;
+                    changeElement.className = 'btc-change negative-change';
+                } else {
+                    changeElement.textContent = 'Brak zmiany';
+                    changeElement.className = 'btc-change';
+                }
+            }
+        }
 
         // Inicjalizacja wykresu
         function initChart() {
@@ -717,12 +841,16 @@
             initChart();
             checkBotStatus();
             fetchTradingData();
+            fetchBTCPrice(); // Pobierz cenę BTC przy starcie
             
             // Odświeżaj dane co 3 sekundy
             updateInterval = setInterval(() => {
                 fetchTradingData();
                 checkBotStatus();
             }, 3000);
+            
+            // Odświeżaj cenę BTC co 10 sekund
+            setInterval(fetchBTCPrice, 10000);
         });
 
         // Cleanup
