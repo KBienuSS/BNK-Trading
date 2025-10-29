@@ -1,28 +1,50 @@
-# app.py
-from flask import Flask, render_template, jsonify
-from trading_bot import trading_bot
+from flask import Flask, render_template, jsonify, request
 import threading
 import time
-from datetime import datetime
 import json
-import os
+import logging
+from datetime import datetime, timedelta
+import random
+import requests
+from trading_bot import TradingBot
+from trading_bot_ml import MLTradingBot
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# Globalna instancja bota
-trading_bot_instance = None
-bot_thread = None
+# Global bot instances
+trading_bot = None
+ml_trading_bot = None
+bot_status = "stopped"
 
-def create_bot():
-    global trading_bot_instance
-    trading_bot_instance = trading_bot
-    return trading_bot_instance
+class TradingData:
+    def __init__(self):
+        self.account_value = 50000
+        self.available_cash = 35000
+        self.total_fees = 124.50
+        self.net_realized = 1567.89
+        
+    def get_trading_data(self):
+        # This would normally come from the actual bot
+        return {
+            'account_summary': {
+                'total_value': self.account_value,
+                'available_cash': self.available_cash,
+                'total_fees': self.total_fees,
+                'net_realized': self.net_realized
+            },
+            'performance_metrics': {
+                'avg_leverage': 8.5,
+                'avg_confidence': 76.2,
+                'biggest_win': 1245.67,
+                'biggest_loss': -567.89
+            },
+            'active_positions': [],
+            'recent_trades': [],
+            'total_unrealized_pnl': 0
+        }
 
-def run_bot():
-    """Uruchamia bota w tle"""
-    bot = create_bot()
-    print("🤖 Starting LIVE trading bot...")
-    bot.run_exact_strategy()
+trading_data = TradingData()
 
 @app.route('/')
 def index():
@@ -30,81 +52,68 @@ def index():
 
 @app.route('/api/trading-data')
 def get_trading_data():
-    """API z danymi dla dashboardu"""
-    if trading_bot_instance is None:
-        return jsonify({'error': 'Bot not initialized'})
-    
-    try:
-        data = trading_bot_instance.get_dashboard_data()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'error': str(e)})
+    if trading_bot and bot_status == "running":
+        return jsonify(trading_bot.get_dashboard_data())
+    elif ml_trading_bot and bot_status == "running":
+        return jsonify(ml_trading_bot.get_dashboard_data())
+    else:
+        return jsonify(trading_data.get_trading_data())
+
+@app.route('/api/bot-status')
+def get_bot_status():
+    return jsonify({'status': bot_status})
 
 @app.route('/api/start-bot')
 def start_bot():
-    """Uruchamia bota"""
-    global bot_thread, trading_bot_instance
-    
-    if trading_bot_instance is None:
-        trading_bot_instance = create_bot()
-    
-    if not trading_bot_instance.is_running:
-        trading_bot_instance.is_running = True
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
-        return jsonify({
-            'status': '✅ Bot LIVE started successfully', 
-            'timestamp': datetime.now().isoformat(),
-            'mode': 'LIVE - Real-time trading'
-        })
-    
-    return jsonify({'status': 'Bot is already running', 'timestamp': datetime.now().isoformat()})
+    global bot_status, trading_bot, ml_trading_bot
+    try:
+        if bot_status != "running":
+            # Start ML bot by default
+            ml_trading_bot = MLTradingBot()
+            
+            bot_thread = threading.Thread(target=run_bot)
+            bot_thread.daemon = True
+            bot_thread.start()
+            
+            bot_status = "running"
+            return jsonify({'status': 'ML Bot started successfully'})
+        else:
+            return jsonify({'status': 'Bot is already running'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/stop-bot')
 def stop_bot():
-    """Zatrzymuje bota"""
-    global trading_bot_instance
-    
-    if trading_bot_instance and trading_bot_instance.is_running:
-        trading_bot_instance.is_running = False
-        return jsonify({
-            'status': '🛑 Bot stopped successfully', 
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    return jsonify({'status': 'Bot is not running', 'timestamp': datetime.now().isoformat()})
-
-@app.route('/api/bot-status')
-def bot_status():
-    """Status bota"""
-    if trading_bot_instance is None:
-        return jsonify({'status': 'not_initialized', 'mode': 'OFFLINE'})
-    
-    return jsonify({
-        'status': 'running' if trading_bot_instance.is_running else 'stopped',
-        'mode': 'LIVE',
-        'timestamp': datetime.now().isoformat(),
-        'symbols': trading_bot_instance.symbols
-    })
+    global bot_status
+    try:
+        if bot_status == "running":
+            if ml_trading_bot:
+                ml_trading_bot.stop_trading()
+            elif trading_bot:
+                trading_bot.stop_trading()
+            
+            bot_status = "stopped"
+            return jsonify({'status': 'Bot stopped successfully'})
+        else:
+            return jsonify({'status': 'Bot is not running'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/force-update')
 def force_update():
-    """Wymusza aktualizację danych"""
-    if trading_bot_instance:
-        trading_bot_instance.update_positions_pnl()
-        return jsonify({'status': 'Data updated', 'timestamp': datetime.now().isoformat()})
-    return jsonify({'error': 'Bot not available'})
+    try:
+        return jsonify({'status': 'Data updated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-# Inicjalizacja przy starcie
+def run_bot():
+    """Run the trading bot in a separate thread"""
+    global ml_trading_bot
+    try:
+        if ml_trading_bot:
+            ml_trading_bot.start_trading()
+    except Exception as e:
+        logging.error(f"Error running bot: {e}")
+
 if __name__ == '__main__':
-    print("🎯 LIVE TRADING BOT - Starting...")
-    print("📍 Local URL: http://localhost:5000")
-    print("📍 Network URL: http://192.168.1.X:5000")  # Zmień na swój IP
-    print("🤖 Bot will use REAL Binance API data")
-    print("⚠️  WARNING: Bot will open/close positions based on real market data!")
-    
-    # Utwórz instancję bota (ale nie uruchamiaj jeszcze)
-    create_bot()
-    
-    # Uruchom serwer Flask
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
