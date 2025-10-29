@@ -789,15 +789,13 @@
             }
         }
 
-        // Aktualizuj dashboard
         // Aktualizuj dashboard - PEŁNA NAPRAWIONA WERSJA
 function updateDashboard(data) {
     console.log('🔄 Dashboard update:', data);
     const now = new Date().toLocaleTimeString();
     
     // Account Summary - POPRAWIONE
-    // Account Summary - POPRAWIONE Z KOLORAMI
- if (data.account_summary) {
+    if (data.account_summary) {
         document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -805,7 +803,7 @@ function updateDashboard(data) {
         const netRealizedElem = document.getElementById('net-realized');
         netRealizedElem.textContent = '$' + (data.account_summary.net_realized || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         netRealizedElem.className = (data.account_summary.net_realized || 0) >= 0 ? 'summary-value profit' : 'summary-value loss';
-}
+    }
     document.getElementById('account-update').textContent = `Last update: ${now}`;
 
     // Performance Metrics - POPRAWIONE
@@ -853,6 +851,46 @@ function updateDashboard(data) {
     } else {
         positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
     }
+
+    // Total Unrealized P&L
+    const totalUnrealizedElem = document.getElementById('total-unrealized');
+    totalUnrealizedElem.textContent = '$' + (data.total_unrealized_pnl || 0).toFixed(2);
+    totalUnrealizedElem.className = (data.total_unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
+    document.getElementById('positions-update').textContent = `Last update: ${now}`;
+
+    // Confidence Levels
+    updateConfidenceLevels(data.confidence_levels || {});
+    document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+
+    // Recent Trades
+    const tradesBody = document.getElementById('trades-body');
+    tradesBody.innerHTML = '';
+    
+    if (data.recent_trades && data.recent_trades.length > 0) {
+        data.recent_trades.forEach(trade => {
+            const row = document.createElement('tr');
+            const pnlClass = trade.realized_pnl >= 0 ? 'profit' : 'loss';
+            
+            row.innerHTML = `
+                <td>${trade.exit_time}</td>
+                <td><strong>${trade.symbol}</strong></td>
+                <td>${trade.side}</td>
+                <td>$${trade.entry_price.toFixed(4)}</td>
+                <td>$${trade.exit_price.toFixed(4)}</td>
+                <td>${trade.quantity.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                <td class="${pnlClass}">$${trade.realized_pnl.toFixed(2)}</td>
+                <td>${trade.exit_reason || 'MANUAL'}</td>
+            `;
+            tradesBody.appendChild(row);
+        });
+    } else {
+        tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
+    }
+    document.getElementById('trades-update').textContent = `Last update: ${now}`;
+
+    // Aktualizuj wykres
+    updateChart(data);
+}
 
     // Total Unrealized P&L
     const totalUnrealizedElem = document.getElementById('total-unrealized');
