@@ -797,21 +797,14 @@ function updateDashboard(data) {
     
     // Account Summary - POPRAWIONE
     // Account Summary - POPRAWIONE Z KOLORAMI
-if (data.account_summary) {
-    document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    
-    // Net Realized - CZERWONY gdy na minusie
-    const netRealizedElem = document.getElementById('net-realized');
-    const netRealized = data.account_summary.net_realized || 0;
-    netRealizedElem.textContent = '$' + netRealized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    
-    if (netRealized >= 0) {
-        netRealizedElem.className = 'summary-value profit';
-    } else {
-        netRealizedElem.className = 'summary-value loss';
-    }
+ if (data.account_summary) {
+        document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        
+        const netRealizedElem = document.getElementById('net-realized');
+        netRealizedElem.textContent = '$' + (data.account_summary.net_realized || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        netRealizedElem.className = (data.account_summary.net_realized || 0) >= 0 ? 'summary-value profit' : 'summary-value loss';
 }
     document.getElementById('account-update').textContent = `Last update: ${now}`;
 
