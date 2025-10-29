@@ -791,57 +791,48 @@
 
         // Aktualizuj dashboard
         function updateDashboard(data) {
-            const now = new Date().toLocaleTimeString();
+    console.log('🔄 Dashboard update:', data);
+    const now = new Date().toLocaleTimeString();
+    
+    // Account Summary
+    document.getElementById('total-value').textContent = '$' + (data.account_summary?.total_value || 0).toLocaleString();
+    document.getElementById('available-cash').textContent = '$' + (data.account_summary?.available_cash || 0).toLocaleString();
+    document.getElementById('total-fees').textContent = '$' + (data.account_summary?.total_fees || 0).toLocaleString();
+    
+    const netRealizedElem = document.getElementById('net-realized');
+    netRealizedElem.textContent = '$' + (data.account_summary?.net_realized || 0).toLocaleString();
+    netRealizedElem.className = (data.account_summary?.net_realized || 0) >= 0 ? 'summary-value profit' : 'summary-value loss';
+    
+    // Active Positions - NAPRAWIONE
+    const positionsBody = document.getElementById('positions-body');
+    positionsBody.innerHTML = '';
+    
+    if (data.active_positions && data.active_positions.length > 0) {
+        data.active_positions.forEach(position => {
+            const row = document.createElement('tr');
+            const currentPrice = position.current_price || position.entry_price;
+            const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
+            const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
             
-            // Account Summary
-            document.getElementById('total-value').textContent = '$' + data.account_summary.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('available-cash').textContent = '$' + data.account_summary.available_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('total-fees').textContent = '$' + data.account_summary.total_fees.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('net-realized').textContent = '$' + data.account_summary.net_realized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('account-update').textContent = `Last update: ${now}`;
-
-            // Performance Metrics
-            document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage;
-            
-            // Oblicz całkowity zwrot w %
-            const totalReturn = ((data.account_summary.total_value - initialCapital) / initialCapital) * 100;
-            const totalReturnElement = document.getElementById('total-return');
-            totalReturnElement.textContent = totalReturn.toFixed(2) + '%';
-            totalReturnElement.className = totalReturn >= 0 ? 'metric-value profit' : 'metric-value loss';
-            
-            document.getElementById('biggest-win').textContent = '$' + data.performance_metrics.biggest_win.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-            // Active Positions
-            const positionsBody = document.getElementById('positions-body');
-            positionsBody.innerHTML = '';
-            
-            if (data.active_positions.length === 0) {
-                positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
-            } else {
-                data.active_positions.forEach(position => {
-                    const row = document.createElement('tr');
-                    const pnlClass = position.unrealized_pnl >= 0 ? 'profit' : 'loss';
-                    const pnlPercent = (position.unrealized_pnl / position.margin) * 100 || 0;
-                    const currentPrice = position.current_price || position.entry_price;
-                    
-                    row.innerHTML = `
-                        <td>${position.entry_time}</td>
-                        <td><strong>${position.symbol}</strong></td>
-                        <td>${position.side || 'LONG'}</td>
-                        <td>$${position.entry_price.toFixed(4)}</td>
-                        <td>$${currentPrice.toFixed(4)}</td>
-                        <td>${position.quantity.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-                        <td>${position.leverage}x</td>
-                        <td>$${position.liquidation_price.toFixed(4)}</td>
-                        <td>$${position.margin.toFixed(2)}</td>
-                        <td class="${pnlClass}">$${position.unrealized_pnl.toFixed(2)}</td>
-                        <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
-                        <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
-                    `;
-                    positionsBody.appendChild(row);
-                });
-            }
+            row.innerHTML = `
+                <td>${position.entry_time || 'N/A'}</td>
+                <td><strong>${position.symbol}</strong></td>
+                <td>${position.side || 'LONG'}</td>
+                <td>$${(position.entry_price || 0).toFixed(4)}</td>
+                <td>$${(currentPrice || 0).toFixed(4)}</td>
+                <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                <td>${position.leverage || 1}x</td>
+                <td>$${(position.liquidation_price || 0).toFixed(4)}</td>
+                <td>$${(position.margin || 0).toFixed(2)}</td>
+                <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
+                <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
+                <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
+            `;
+            positionsBody.appendChild(row);
+        });
+    } else {
+        positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
+    }
 
             // Total Unrealized P&L
             const totalUnrealizedElem = document.getElementById('total-unrealized');
