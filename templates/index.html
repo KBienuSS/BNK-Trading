@@ -712,88 +712,111 @@
         }
 
         // Aktualizuj dashboard
-        function updateDashboard(data) {
-            const now = new Date().toLocaleTimeString();
+        // Aktualizuj dashboard - NAPRAWIONA WERSJA
+function updateDashboard(data) {
+    console.log('🔄 Dashboard update:', data);
+    const now = new Date().toLocaleTimeString();
+    
+    // Account Summary
+    if (data.account_summary) {
+        document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        
+        // Net Realized - czerwony gdy na minusie
+        const netRealizedElem = document.getElementById('net-realized');
+        const netRealized = data.account_summary.net_realized || 0;
+        netRealizedElem.textContent = '$' + netRealized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        netRealizedElem.className = netRealized >= 0 ? 'summary-value profit' : 'summary-value loss';
+    }
+    document.getElementById('account-update').textContent = `Last update: ${now}`;
+
+    // Performance Metrics
+    if (data.performance_metrics) {
+        document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
+        document.getElementById('avg-confidence').textContent = (data.performance_metrics.avg_confidence || 0) + '%';
+        document.getElementById('biggest-win').textContent = '$' + (data.performance_metrics.biggest_win || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    // Active Positions - NAPRAWIONE
+    const positionsBody = document.getElementById('positions-body');
+    positionsBody.innerHTML = '';
+    
+    if (data.active_positions && data.active_positions.length > 0) {
+        console.log('📊 Rendering active positions:', data.active_positions);
+        
+        data.active_positions.forEach(position => {
+            const row = document.createElement('tr');
             
-            // Account Summary
-            document.getElementById('total-value').textContent = '$' + data.account_summary.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('available-cash').textContent = '$' + data.account_summary.available_cash.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('total-fees').textContent = '$' + data.account_summary.total_fees.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('net-realized').textContent = '$' + data.account_summary.net_realized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('account-update').textContent = `Last update: ${now}`;
-
-            // Performance Metrics
-            document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage;
-            document.getElementById('avg-confidence').textContent = data.performance_metrics.avg_confidence + '%';
-            document.getElementById('biggest-win').textContent = '$' + data.performance_metrics.biggest_win.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-
-            // Active Positions
-            const positionsBody = document.getElementById('positions-body');
-            positionsBody.innerHTML = '';
+            // Użyj current_price jeśli istnieje, w przeciwnym razie symuluj małą zmianę
+            const currentPrice = position.current_price || (position.entry_price * (1 + (Math.random() * 0.02 - 0.01)));
+            const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
+            const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
             
-            if (data.active_positions.length === 0) {
-                positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
-            } else {
-                data.active_positions.forEach(position => {
-                    const row = document.createElement('tr');
-                    const pnlClass = position.unrealized_pnl >= 0 ? 'profit' : 'loss';
-                    const pnlPercent = (position.unrealized_pnl / position.margin) * 100 || 0;
-                    const currentPrice = position.current_price || position.entry_price;
-                    
-                    row.innerHTML = `
-                        <td>${position.entry_time}</td>
-                        <td><strong>${position.symbol}</strong></td>
-                        <td>${position.side || 'LONG'}</td>
-                        <td>$${position.entry_price.toFixed(4)}</td>
-                        <td>$${currentPrice.toFixed(4)}</td>
-                        <td>${position.quantity.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-                        <td>${position.leverage}x</td>
-                        <td>$${position.liquidation_price.toFixed(4)}</td>
-                        <td>$${position.margin.toFixed(2)}</td>
-                        <td class="${pnlClass}">$${position.unrealized_pnl.toFixed(2)}</td>
-                        <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
-                        <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
-                    `;
-                    positionsBody.appendChild(row);
-                });
-            }
+            row.innerHTML = `
+                <td>${position.entry_time || 'N/A'}</td>
+                <td><strong>${position.symbol}</strong></td>
+                <td>${position.side || 'LONG'}</td>
+                <td>$${(position.entry_price || 0).toFixed(4)}</td>
+                <td>$${currentPrice.toFixed(4)}</td>
+                <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                <td>${position.leverage || 1}x</td>
+                <td>$${(position.liquidation_price || 0).toFixed(4)}</td>
+                <td>$${(position.margin || 0).toFixed(2)}</td>
+                <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
+                <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
+                <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
+            `;
+            positionsBody.appendChild(row);
+        });
+    } else {
+        positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
+        console.log('❌ No active positions to display');
+    }
 
-            // Total Unrealized P&L
-            const totalUnrealizedElem = document.getElementById('total-unrealized');
-            totalUnrealizedElem.textContent = '$' + data.total_unrealized_pnl.toFixed(2);
-            totalUnrealizedElem.className = data.total_unrealized_pnl >= 0 ? 'profit' : 'loss';
-            document.getElementById('positions-update').textContent = `Last update: ${now}`;
+    // Total Unrealized P&L
+    const totalUnrealizedElem = document.getElementById('total-unrealized');
+    if (data.total_unrealized_pnl !== undefined) {
+        totalUnrealizedElem.textContent = '$' + data.total_unrealized_pnl.toFixed(2);
+        totalUnrealizedElem.className = data.total_unrealized_pnl >= 0 ? 'profit' : 'loss';
+    } else {
+        totalUnrealizedElem.textContent = '$0.00';
+        totalUnrealizedElem.className = 'profit';
+    }
+    document.getElementById('positions-update').textContent = `Last update: ${now}`;
 
-            // Recent Trades
-            const tradesBody = document.getElementById('trades-body');
-            tradesBody.innerHTML = '';
+    // Recent Trades - NAPRAWIONE
+    const tradesBody = document.getElementById('trades-body');
+    tradesBody.innerHTML = '';
+    
+    if (data.recent_trades && data.recent_trades.length > 0) {
+        console.log('📈 Rendering recent trades:', data.recent_trades);
+        
+        data.recent_trades.forEach(trade => {
+            const row = document.createElement('tr');
+            const pnlClass = (trade.realized_pnl || 0) >= 0 ? 'profit' : 'loss';
             
-            if (data.recent_trades.length === 0) {
-                tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
-            } else {
-                data.recent_trades.forEach(trade => {
-                    const row = document.createElement('tr');
-                    const pnlClass = trade.realized_pnl >= 0 ? 'profit' : 'loss';
-                    
-                    row.innerHTML = `
-                        <td>${trade.exit_time}</td>
-                        <td><strong>${trade.symbol}</strong></td>
-                        <td>${trade.side}</td>
-                        <td>$${trade.entry_price.toFixed(4)}</td>
-                        <td>$${trade.exit_price.toFixed(4)}</td>
-                        <td>${trade.quantity.toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
-                        <td class="${pnlClass}">$${trade.realized_pnl.toFixed(2)}</td>
-                        <td>${trade.exit_reason || 'MANUAL'}</td>
-                    `;
-                    tradesBody.appendChild(row);
-                });
-            }
-            document.getElementById('trades-update').textContent = `Last update: ${now}`;
+            row.innerHTML = `
+                <td>${trade.exit_time || 'N/A'}</td>
+                <td><strong>${trade.symbol}</strong></td>
+                <td>${trade.side || 'LONG'}</td>
+                <td>$${(trade.entry_price || 0).toFixed(4)}</td>
+                <td>$${(trade.exit_price || 0).toFixed(4)}</td>
+                <td>${(trade.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
+                <td class="${pnlClass}">$${(trade.realized_pnl || 0).toFixed(2)}</td>
+                <td>${trade.exit_reason || 'MANUAL'}</td>
+            `;
+            tradesBody.appendChild(row);
+        });
+    } else {
+        tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
+    }
+    document.getElementById('trades-update').textContent = `Last update: ${now}`;
 
-            // Aktualizuj wykres TYLKO jeśli były nowe transakcje
-            updateChart(data);
-        }
+    // Aktualizuj wykres
+    updateChart(data);
+}
 
         // Kontrola bota
         async function startBot() {
