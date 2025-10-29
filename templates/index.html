@@ -324,6 +324,43 @@
             gap: 20px;
         }
         
+        .confidence-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .confidence-item {
+            background-color: var(--accent-color);
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .confidence-symbol {
+            font-size: 14px;
+            color: #a0a0a0;
+            margin-bottom: 5px;
+        }
+        
+        .confidence-value {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .confidence-high {
+            color: #4caf50;
+        }
+        
+        .confidence-medium {
+            color: #ff9800;
+        }
+        
+        .confidence-low {
+            color: #f44336;
+        }
+        
         @media (max-width: 1200px) {
             .top-row {
                 grid-template-columns: 1fr;
@@ -336,6 +373,10 @@
             .header-right {
                 flex-direction: column;
                 gap: 10px;
+            }
+            
+            .confidence-grid {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
         
@@ -365,6 +406,10 @@
             
             .btc-price {
                 font-size: 14px;
+            }
+            
+            .confidence-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -426,8 +471,8 @@
                             <div class="metric-value" id="avg-leverage">0.0</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-label">Average Confidence</div>
-                            <div class="metric-value" id="avg-confidence">0%</div>
+                            <div class="metric-label">Total Return %</div>
+                            <div class="metric-value profit" id="total-return">0.00%</div>
                         </div>
                         <div class="metric-item">
                             <div class="metric-label">Biggest Win</div>
@@ -471,6 +516,38 @@
                     Total Unrealized P&L: <span class="profit" id="total-unrealized">$0.00</span>
                 </div>
                 <div class="last-update" id="positions-update">Last update: --</div>
+            </div>
+            
+            <!-- CONFIDENCE LEVELS - FULL WIDTH -->
+            <div class="card full-width">
+                <h2 class="card-title">Asset Confidence Levels</h2>
+                <div class="confidence-grid" id="confidence-grid">
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BTCUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-btc">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">ETHUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-eth">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">SOLUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-sol">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BNBUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-bnb">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">XRPUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-xrp">0%</div>
+                    </div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">DOGEUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-doge">0%</div>
+                    </div>
+                </div>
+                <div class="last-update" id="confidence-update">Last update: --</div>
             </div>
             
             <!-- BOTTOM ROW: Account Value Chart + Recent Trades - SAME WIDTH AS ACTIVE POSITIONS -->
@@ -519,6 +596,7 @@
             values: []
         };
         let lastBTCPrice = 0;
+        const initialCapital = 10000; // Zgodnie z botem
 
         // Funkcje do ceny BTC
         async function fetchBTCPrice() {
@@ -724,7 +802,13 @@
 
             // Performance Metrics
             document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage;
-            document.getElementById('avg-confidence').textContent = data.performance_metrics.avg_confidence + '%';
+            
+            // Oblicz całkowity zwrot w %
+            const totalReturn = ((data.account_summary.total_value - initialCapital) / initialCapital) * 100;
+            const totalReturnElement = document.getElementById('total-return');
+            totalReturnElement.textContent = totalReturn.toFixed(2) + '%';
+            totalReturnElement.className = totalReturn >= 0 ? 'metric-value profit' : 'metric-value loss';
+            
             document.getElementById('biggest-win').textContent = '$' + data.performance_metrics.biggest_win.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
@@ -765,6 +849,10 @@
             totalUnrealizedElem.className = data.total_unrealized_pnl >= 0 ? 'profit' : 'loss';
             document.getElementById('positions-update').textContent = `Last update: ${now}`;
 
+            // Confidence Levels
+            updateConfidenceLevels(data.confidence_levels || {});
+            document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+
             // Recent Trades
             const tradesBody = document.getElementById('trades-body');
             tradesBody.innerHTML = '';
@@ -793,6 +881,29 @@
 
             // Aktualizuj wykres TYLKO jeśli były nowe transakcje
             updateChart(data);
+        }
+
+        // Aktualizuj poziomy confidence dla każdej kryptowaluty
+        function updateConfidenceLevels(confidenceData) {
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            
+            symbols.forEach(symbol => {
+                const confidence = confidenceData[symbol] || 0;
+                const element = document.getElementById(`confidence-${symbol.toLowerCase().replace('usdt', '')}`);
+                
+                if (element) {
+                    element.textContent = `${confidence}%`;
+                    
+                    // Ustaw kolor na podstawie poziomu confidence
+                    if (confidence >= 70) {
+                        element.className = 'confidence-value confidence-high';
+                    } else if (confidence >= 40) {
+                        element.className = 'confidence-value confidence-medium';
+                    } else {
+                        element.className = 'confidence-value confidence-low';
+                    }
+                }
+            });
         }
 
         // Kontrola bota
