@@ -110,10 +110,16 @@ def run_bot():
     """Run the trading bot in a separate thread"""
     global ml_trading_bot
     try:
+        logging.info("🤖 Starting ML Trading Bot thread...")
         if ml_trading_bot:
             ml_trading_bot.start_trading()
+        else:
+            logging.error("❌ ml_trading_bot is None - cannot start trading")
     except Exception as e:
-        logging.error(f"Error running bot: {e}")
+        logging.error(f"❌ Error running ML bot: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
