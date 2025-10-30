@@ -63,12 +63,12 @@ class MLTradingBot:
         
         # Position sizes - ZREDUKOWANE
         self.position_sizes = {
-            'ETHUSDT': 0.5,    # Zmniejszone z 2.5
-            'BTCUSDT': 0.015,  # Zmniejszone z 0.08
-            'SOLUSDT': 2.0,    # Zmniejszone z 12.0
-            'BNBUSDT': 3.0,    # Zmniejszone z 15.0
-            'XRPUSDT': 900.0,  # Zmniejszone z 4500.0
-            'DOGEUSDT': 5000.0, # Zmniejszone z 25000.0
+            'ETHUSDT': 0.5,
+            'BTCUSDT': 0.015,
+            'SOLUSDT': 2.0,
+            'BNBUSDT': 3.0,
+            'XRPUSDT': 900.0,
+            'DOGEUSDT': 5000.0,
         }
         
         # Statistics
@@ -117,137 +117,61 @@ class MLTradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error initializing ML model: {e}")
 
-    def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
-        """Get LIVE price data from working APIs"""
+    def get_bybit_klines(self, symbol: str, interval: str = '3', limit: int = 100):
+        """Get price data from Bybit API"""
         try:
-            # Realistic simulation based on current market prices
-            return self.get_realistic_simulation(symbol, limit)
-        except Exception as e:
-            self.logger.error(f"❌ Error getting klines for {symbol}: {e}")
-            return self.get_realistic_simulation(symbol, limit)
-
-    def get_current_price(self, symbol: str):
-        """Get LIVE current price from working APIs with 4 decimal precision"""
-        try:
-            # Primary: Binance API for precise prices
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+            # Bybit uses different interval format: 1, 3, 5, 15, 30, 60, 120, 240, 360, 720, D, M, W
+            url = f"https://api.bybit.com/v5/market/kline?category=spot&symbol={symbol}&interval={interval}&limit={limit}"
             response = requests.get(url, timeout=10)
             
             if response.status_code == 200:
                 data = response.json()
-                price = float(data['price'])
-                self.logger.info(f"✅ Binance LIVE Price for {symbol}: ${price:.6f}")
-                return round(price, 4)  # Zaokrąglij do 4 miejsc
-                
+                if data['retCode'] == 0 and data['result']['list']:
+                    candles = data['result']['list']
+                    # Bybit format: [timestamp, open, high, low, close, volume, turnover]
+                    df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+                    
+                    # Convert to numeric
+                    for col in ['open', 'high', 'low', 'close', 'volume']:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Convert timestamp (Bybit uses milliseconds)
+                    df['timestamp'] = pd.to_datetime(df['timestamp'].astype('int64'), unit='ms')
+                    df = df.sort_values('timestamp').reset_index(drop=True)
+                    
+                    self.logger.info(f"✅ Bybit LIVE Data for {symbol}: {len(df)} rows, Last: ${df['close'].iloc[-1]:.4f}")
+                    return df
+                    
         except Exception as e:
-            self.logger.warning(f"Binance price failed: {e}")
+            self.logger.warning(f"Bybit klines failed: {e}")
         
+        # Jeśli Bybit nie działa, zwróć None - bot będzie czekał na dane
+        return None
+
+    def get_current_price(self, symbol: str):
+        """Get LIVE current price from Bybit API with 4 decimal precision"""
         try:
-            # Fallback: CoinGecko API
-            coin_id = self.symbol_to_coingecko(symbol)
-            if coin_id:
-                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&precision=8"
-                response = requests.get(url, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if coin_id in data and 'usd' in data[coin_id]:
-                        price = data[coin_id]['usd']
-                        self.logger.info(f"✅ CoinGecko LIVE Price for {symbol}: ${price:.6f}")
-                        return round(float(price), 4)  # Zaokrąglij do 4 miejsc
-                        
+            # Primary: Bybit API for precise prices
+            url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data['retCode'] == 0 and data['result']['list']:
+                    ticker = data['result']['list'][0]
+                    price = float(ticker['lastPrice'])
+                    self.logger.info(f"✅ Bybit LIVE Price for {symbol}: ${price:.6f}")
+                    return round(price, 4)  # Zaokrąglij do 4 miejsc
+                    
         except Exception as e:
-            self.logger.warning(f"CoinGecko price failed: {e}")
+            self.logger.warning(f"Bybit price failed: {e}")
         
-        # Final fallback to realistic market price with 4 decimals
-        return self.get_realistic_market_price(symbol)
+        # Jeśli nie można pobrać ceny, zwróć None - bot będzie czekał
+        return None
 
-    def get_realistic_simulation(self, symbol: str, limit: int = 100):
-        """Realistic simulation with 4 decimal precision"""
-        import pandas as pd
-        
-        # Base prices with 4 decimal precision
-        base_prices = {
-            'BTCUSDT': 61123.4567,
-            'ETHUSDT': 3485.1234,
-            'BNBUSDT': 582.7890,
-            'SOLUSDT': 178.4567,
-            'XRPUSDT': 0.6158,
-            'DOGEUSDT': 0.1489
-        }
-        
-        base_price = base_prices.get(symbol, 100.1234)
-        
-        # Generate realistic data with precise prices
-        dates = pd.date_range(end=pd.Timestamp.now(), periods=limit, freq='3min')
-        data = []
-        current_price = base_price
-        
-        for i in range(limit):
-            volatility = {
-                'BTCUSDT': 0.0015, 'ETHUSDT': 0.002, 'BNBUSDT': 0.0025,
-                'SOLUSDT': 0.003, 'XRPUSDT': 0.004, 'DOGEUSDT': 0.005
-            }.get(symbol, 0.002)
-            
-            change = random.gauss(0, volatility)
-            current_price = current_price * (1 + change)
-            current_price = round(current_price, 4)  # 4 decimal places
-            
-            data.append({
-                'timestamp': dates[i],
-                'open': round(current_price, 4),
-                'high': round(current_price * (1 + abs(random.gauss(0, volatility/2))), 4),
-                'low': round(current_price * (1 - abs(random.gauss(0, volatility/2))), 4),
-                'close': round(current_price * (1 + random.gauss(0, volatility/3)), 4),
-                'volume': random.uniform(5000, 20000)
-            })
-            
-            current_price = data[-1]['close']
-        
-        df = pd.DataFrame(data)
-        self.logger.info(f"📊 Realistic Simulation for {symbol}: ${df['close'].iloc[-1]:.4f}")
-        return df
-
-    def get_realistic_market_price(self, symbol: str):
-        """Get realistic price with 4 decimal precision"""
-        import random
-        
-        # Current market prices with precise values
-        current_market = {
-            'BTCUSDT': 61123.4567,
-            'ETHUSDT': 3485.1234,
-            'BNBUSDT': 582.7890,
-            'SOLUSDT': 178.4567,
-            'XRPUSDT': 0.6158,
-            'DOGEUSDT': 0.1489
-        }
-        
-        base_price = current_market.get(symbol, 100.1234)
-        
-        # Add realistic micro-movement
-        volatility = {
-            'BTCUSDT': 0.0005, 'ETHUSDT': 0.0008, 'BNBUSDT': 0.001,
-            'SOLUSDT': 0.0015, 'XRPUSDT': 0.002, 'DOGEUSDT': 0.003
-        }.get(symbol, 0.001)
-        
-        change = random.gauss(0, volatility)
-        live_price = base_price * (1 + change)
-        live_price = round(live_price, 4)  # 4 decimal places
-        
-        self.logger.info(f"📊 Realistic Market Price for {symbol}: ${live_price:.4f}")
-        return live_price
-
-    def symbol_to_coingecko(self, symbol: str):
-        """Convert symbol to CoinGecko ID"""
-        mapping = {
-            'BTCUSDT': 'bitcoin',
-            'ETHUSDT': 'ethereum', 
-            'BNBUSDT': 'binancecoin',
-            'SOLUSDT': 'solana',
-            'XRPUSDT': 'ripple', 
-            'DOGEUSDT': 'dogecoin'
-        }
-        return mapping.get(symbol, None)
+    def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
+        """Get price data - using Bybit as primary"""
+        return self.get_bybit_klines(symbol, '3', limit)  # '3' means 3 minutes in Bybit
 
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate comprehensive technical indicators for ML features"""
@@ -301,7 +225,7 @@ class MLTradingBot:
     def detect_breakout_signal(self, symbol: str) -> Tuple[bool, float, float]:
         """Detect breakout signals based on resistance and volume"""
         try:
-            df = self.get_binance_klines(symbol, '3m', 100)
+            df = self.get_bybit_klines(symbol, '3', 100)
             if df is None or len(df) < 50:
                 return False, 0, 0
             
@@ -344,7 +268,7 @@ class MLTradingBot:
                 return "BREAKOUT_LONG", breakout_confidence
             
             # Fallback to traditional ML strategy
-            df = self.get_binance_klines(symbol, '3m', 100)
+            df = self.get_bybit_klines(symbol, '3', 100)
             if df is None or len(df) < 50:
                 return "HOLD", 0.5
             
@@ -456,6 +380,7 @@ class MLTradingBot:
         """Open breakout position"""
         current_price = self.get_current_price(symbol)
         if not current_price:
+            self.logger.warning(f"❌ Cannot get current price for {symbol}, skipping position")
             return None
         
         signal, confidence = self.generate_breakout_signal(symbol)
@@ -530,7 +455,7 @@ class MLTradingBot:
         return position_id
 
     def update_positions_pnl(self):
-        """Update P&L for all positions"""
+        """Update P&L for all positions - TYLKO z cenami z API"""
         total_unrealized = 0
         total_margin = 0
         
@@ -540,6 +465,7 @@ class MLTradingBot:
             
             current_price = self.get_current_price(position['symbol'])
             if not current_price:
+                # Jeśli nie można pobrać ceny, pomiń aktualizację P&L
                 continue
             
             position['current_price'] = round(current_price, 4)  # Zapis z 4 miejscami
@@ -568,7 +494,7 @@ class MLTradingBot:
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
-        """Check exit conditions"""
+        """Check exit conditions - TYLKO z cenami z API"""
         positions_to_close = []
         
         for position_id, position in self.positions.items():
@@ -577,6 +503,7 @@ class MLTradingBot:
             
             current_price = self.get_current_price(position['symbol'])
             if not current_price:
+                # Jeśli nie można pobrać ceny, pomiń sprawdzanie warunków wyjścia
                 continue
             
             exit_reason = None
@@ -655,7 +582,7 @@ class MLTradingBot:
         self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
 
     def get_dashboard_data(self):
-        """Prepare dashboard data for HTML interface - FIXED VERSION"""
+        """Prepare dashboard data for HTML interface - TYLKO z cenami z API"""
         active_positions = []
         total_confidence = 0
         confidence_count = 0
@@ -664,6 +591,9 @@ class MLTradingBot:
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
                 current_price = self.get_current_price(position['symbol'])
+                if not current_price:
+                    # Jeśli nie można pobrać ceny, użyj ceny wejścia
+                    current_price = position['entry_price']
                 
                 # Calculate unrealized PnL
                 if position['side'] == 'LONG':
