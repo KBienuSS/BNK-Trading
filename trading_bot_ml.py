@@ -184,7 +184,7 @@ class MLTradingBot:
                     if coin_id in data and 'usd' in data[coin_id]:
                         price = data[coin_id]['usd']
                         self.logger.info(f"✅ CoinGecko LIVE Price for {symbol}: ${price:.6f}")
-                        return round(float(price), 6)  # Zaokrąglij do 6 miejsc dla większej precyzji
+                        return round(float(price), 6)
                     
         except Exception as e:
             self.logger.warning(f"CoinGecko price failed: {e}")
@@ -214,7 +214,7 @@ class MLTradingBot:
                     data = response.json()
                     if 'result' in data:
                         for key in data['result']:
-                            price = float(data['result'][key]['c'][0])  # c[0] to last price
+                            price = float(data['result'][key]['c'][0])
                             self.logger.info(f"✅ Kraken Price for {symbol}: ${price:.6f}")
                             return round(price, 6)
                             
@@ -293,7 +293,7 @@ class MLTradingBot:
             df['distance_to_support'] = (df['close'] - df['support']) / df['close']
             
             # Momentum
-            df['momentum_1h'] = df['close'].pct_change(20)  # 1 hour momentum
+            df['momentum_1h'] = df['close'].pct_change(20)
             df['volatility'] = df['close'].rolling(20).std() / df['close'].rolling(20).mean()
             
             return df
@@ -365,23 +365,23 @@ class MLTradingBot:
             
             # Conditions for momentum trading
             conditions = 0
-            if 40 <= current_rsi <= 70:  # Optimal RSI range for breakout
+            if 40 <= current_rsi <= 70:
                 conditions += 1
                 confidence += 0.15
             
-            if volume_ratio > 1.3:  # High volume
+            if volume_ratio > 1.3:
                 conditions += 1
                 confidence += 0.20
             
-            if macd_histogram > 0:  # Positive MACD momentum
+            if macd_histogram > 0:
                 conditions += 1
                 confidence += 0.20
             
-            if momentum_1h > 0.01:  # Positive 1h momentum
+            if momentum_1h > 0.01:
                 conditions += 1
                 confidence += 0.15
             
-            if current_price > df['sma_20'].iloc[-1]:  # Price above SMA20
+            if current_price > df['sma_20'].iloc[-1]:
                 conditions += 1
                 confidence += 0.15
             
@@ -396,15 +396,15 @@ class MLTradingBot:
             return "HOLD", 0.5
 
     def calculate_breakout_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
-        """Calculate position size according to asset allocation - POPRAWIONE"""
+        """Calculate position size according to asset allocation"""
         try:
-            # Base allocation from portfolio (maksymalnie 22% dla ETH, 20% dla BTC, etc.)
+            # Base allocation from portfolio
             allocation_percentage = self.asset_allocation.get(symbol, 0.15)
             
             # Adjustment based on confidence
-            confidence_multiplier = 0.5 + (confidence * 0.5)  # 0.5-1.0 (bardziej konserwatywne)
+            confidence_multiplier = 0.5 + (confidence * 0.5)
             
-            # Calculate position value - NIE UŻYWAJ confidence_multiplier do alokacji
+            # Calculate position value
             position_value = self.virtual_capital * allocation_percentage
             
             # Maximum position limit (30% of deposit)
@@ -414,7 +414,7 @@ class MLTradingBot:
             # Calculate quantity
             quantity = position_value / price
             
-            # Use historical size if smaller - ZREDUKOWANE WIELKOŚCI
+            # Use historical size if smaller
             historical_quantity = self.position_sizes.get(symbol, quantity)
             final_quantity = min(quantity, historical_quantity)
             
@@ -489,15 +489,15 @@ class MLTradingBot:
         if is_breakout:
             _, _, resistance_level = self.detect_breakout_signal(symbol)
             exit_levels = {
-                'take_profit': round(current_price * 1.08, 6),   # 8% TP for breakout
-                'stop_loss': round(resistance_level * 0.98, 6),  # SL just below breakout level
-                'invalidation': round(current_price * 0.96, 6)   # 4% invalidation
+                'take_profit': round(current_price * 1.08, 6),
+                'stop_loss': round(resistance_level * 0.98, 6),
+                'invalidation': round(current_price * 0.96, 6)
             }
         else:
             exit_levels = {
-                'take_profit': round(current_price * 1.10, 6),  # 10% TP
-                'stop_loss': round(current_price * 0.95, 6),    # 5% SL
-                'invalidation': round(current_price * 0.93, 6)  # 7% invalidation
+                'take_profit': round(current_price * 1.10, 6),
+                'stop_loss': round(current_price * 0.95, 6),
+                'invalidation': round(current_price * 0.93, 6)
             }
         
         liquidation_price = round(current_price * (1 - 0.9 / self.leverage), 6)
@@ -508,7 +508,7 @@ class MLTradingBot:
         position = {
             'symbol': symbol,
             'side': 'LONG',
-            'entry_price': round(current_price, 6),  # Zapis z 6 miejscami dla precyzji
+            'entry_price': round(current_price, 6),
             'quantity': quantity,
             'leverage': self.leverage,
             'margin': margin_required,
@@ -537,7 +537,7 @@ class MLTradingBot:
         return position_id
 
     def update_positions_pnl(self):
-        """Update P&L for all positions - TYLKO z cenami z API"""
+        """Update P&L for all positions"""
         total_unrealized = 0
         total_margin = 0
         
@@ -547,10 +547,9 @@ class MLTradingBot:
             
             current_price = self.get_current_price(position['symbol'])
             if not current_price:
-                # Jeśli nie można pobrać ceny, pomiń aktualizację P&L
                 continue
             
-            position['current_price'] = round(current_price, 6)  # Zapis z 6 miejscami
+            position['current_price'] = round(current_price, 6)
             
             if position['side'] == 'LONG':
                 pnl_pct = (current_price - position['entry_price']) / position['entry_price']
@@ -576,7 +575,7 @@ class MLTradingBot:
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
-        """Check exit conditions - TYLKO z cenami z API"""
+        """Check exit conditions"""
         positions_to_close = []
         
         for position_id, position in self.positions.items():
@@ -585,7 +584,6 @@ class MLTradingBot:
             
             current_price = self.get_current_price(position['symbol'])
             if not current_price:
-                # Jeśli nie można pobrać ceny, pomiń sprawdzanie warunków wyjścia
                 continue
             
             exit_reason = None
@@ -632,7 +630,7 @@ class MLTradingBot:
             'symbol': position['symbol'],
             'side': position['side'],
             'entry_price': position['entry_price'],
-            'exit_price': round(exit_price, 6),  # Zapis z 6 miejscami
+            'exit_price': round(exit_price, 6),
             'quantity': position['quantity'],
             'realized_pnl': realized_pnl_after_fee,
             'exit_reason': exit_reason,
@@ -664,17 +662,34 @@ class MLTradingBot:
         self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
 
     def get_dashboard_data(self):
-        """Prepare dashboard data for HTML interface - TYLKO z cenami z API"""
+        """Prepare dashboard data for HTML interface"""
         active_positions = []
         total_confidence = 0
         confidence_count = 0
+        
+        # Calculate confidence levels for each asset - POPRAWIONE: zawsze aktualizuj
+        confidence_levels = {}
+        for symbol in self.priority_symbols:
+            try:
+                signal, confidence = self.generate_breakout_signal(symbol)
+                confidence_percent = round(confidence * 100, 1)
+                confidence_levels[symbol] = confidence_percent
+                
+                if confidence > 0:
+                    total_confidence += confidence
+                    confidence_count += 1
+                    
+                self.logger.info(f"📊 Confidence for {symbol}: {confidence_percent}%")
+                    
+            except Exception as e:
+                self.logger.error(f"Error calculating confidence for {symbol}: {e}")
+                confidence_levels[symbol] = 0
         
         # Get active positions with current prices
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
                 current_price = self.get_current_price(position['symbol'])
                 if not current_price:
-                    # Jeśli nie można pobrać ceny, użyj ceny wejścia
                     current_price = position['entry_price']
                 
                 # Calculate unrealized PnL
@@ -690,8 +705,8 @@ class MLTradingBot:
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
                     'symbol': position['symbol'],
                     'side': position['side'],
-                    'entry_price': round(position['entry_price'], 4),  # Dla dashboardu 4 miejsca
-                    'current_price': round(current_price, 4),  # Dla dashboardu 4 miejsca
+                    'entry_price': round(position['entry_price'], 4),
+                    'current_price': round(current_price, 4),
                     'quantity': position['quantity'],
                     'leverage': position['leverage'],
                     'liquidation_price': round(position['liquidation_price'], 4),
@@ -701,30 +716,14 @@ class MLTradingBot:
                     'strategy': position.get('strategy', 'MOMENTUM')
                 })
         
-        # Calculate confidence levels for each asset
-        confidence_levels = {}
-        for symbol in self.priority_symbols:
-            try:
-                signal, confidence = self.generate_breakout_signal(symbol)
-                confidence_percent = round(confidence * 100, 1)
-                confidence_levels[symbol] = confidence_percent
-                
-                if confidence > 0:
-                    total_confidence += confidence
-                    confidence_count += 1
-                    
-            except Exception as e:
-                self.logger.error(f"Error calculating confidence for {symbol}: {e}")
-                confidence_levels[symbol] = 0
-        
         # Get recent trades
         recent_trades = []
-        for trade in self.trade_history[-10:]:  # Last 10 trades
+        for trade in self.trade_history[-10:]:
             recent_trades.append({
                 'symbol': trade['symbol'],
                 'side': trade['side'],
-                'entry_price': round(trade['entry_price'], 4),  # 4 miejsca dla dashboardu
-                'exit_price': round(trade['exit_price'], 4),    # 4 miejsca dla dashboardu
+                'entry_price': round(trade['entry_price'], 4),
+                'exit_price': round(trade['exit_price'], 4),
                 'quantity': trade['quantity'],
                 'realized_pnl': trade['realized_pnl'],
                 'exit_reason': trade['exit_reason'],
@@ -733,11 +732,11 @@ class MLTradingBot:
                 'confidence': trade.get('confidence', 0)
             })
         
-        # Calculate performance metrics
+        # Calculate performance metrics - POPRAWIONE: użyj initial_capital = 10000
         total_trades = self.stats['total_trades']
         win_rate = (self.stats['winning_trades'] / total_trades * 100) if total_trades > 0 else 0
         
-        # Calculate total return percentage
+        # Calculate total return percentage based on 10000
         total_return_pct = ((self.dashboard_data['account_value'] - 10000) / 10000) * 100
         
         return {
@@ -807,7 +806,7 @@ class MLTradingBot:
                                 
                                 position_id = self.open_breakout_position(symbol)
                                 if position_id:
-                                    time.sleep(1)  # Small delay between positions
+                                    time.sleep(1)
                 
                 # 4. Log portfolio status
                 portfolio_value = self.dashboard_data['account_value']
