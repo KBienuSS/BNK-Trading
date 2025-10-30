@@ -734,7 +734,7 @@
         </div>
     </div>
 
-    <script>
+     <script>
         let accountChart;
         let updateInterval;
         let lastTradeCount = 0;
@@ -751,7 +751,7 @@
             XRP: 0,
             DOGE: 0
         };
-        const initialCapital = 50000;
+        const initialCapital = 10000; // ZMIANA: 10000 zamiast 50000
 
         // NOWA FUNKCJA: Pobieranie cen wszystkich kryptowalut
         async function fetchAllCryptoPrices() {
@@ -1077,11 +1077,11 @@
             }
             document.getElementById('account-update').textContent = `Last update: ${now}`;
 
-            // Performance Metrics
+            // Performance Metrics - POPRAWIONE: użyj initialCapital = 10000
             if (data.performance_metrics) {
                 document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
                 
-                // Total Profit % - oblicz na podstawie kapitału początkowego
+                // Total Profit % - oblicz na podstawie kapitału początkowego 10000
                 const totalValue = data.account_summary?.total_value || initialCapital;
                 const totalProfit = ((totalValue - initialCapital) / initialCapital) * 100;
                 const totalProfitElem = document.getElementById('total-profit');
@@ -1136,8 +1136,10 @@
             document.getElementById('positions-update').textContent = `Last update: ${now}`;
 
             // Confidence Levels
-            updateConfidenceLevels(data.confidence_levels || {});
-            document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+            if (data.confidence_levels) {
+                updateConfidenceLevels(data.confidence_levels);
+                document.getElementById('confidence-update').textContent = `Last update: ${now}`;
+            }
 
             // Recent Trades
             const tradesBody = document.getElementById('trades-body');
