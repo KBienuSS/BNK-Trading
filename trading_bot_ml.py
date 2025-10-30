@@ -779,4 +779,4 @@ class MLTradingBot:
         self.logger.info("🛑 Breakout Trading stopped")
 
 # Global ML bot instance
-ml_trading_bot = MLTradingBot(initial_capital=10000, leverage=10)
+#ml_trading_bot = MLTradingBot(initial_capital=10000, leverage=10)
