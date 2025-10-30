@@ -808,4 +808,4 @@ class MLTradingBot:
     def stop_trading(self):
         """Stop breakout trading"""
         self.is_running = False
-        self.logger.info("🛑 Breakout Trading stopped"
+        self.logger.info("🛑 Breakout Trading stopped")
