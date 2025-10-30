@@ -518,7 +518,7 @@
                         <span class="crypto-icon">₿</span>
                         BTC
                     </div>
-                    <div class="crypto-price" id="price-btc">$0.00</div>
+                    <div class="crypto-price" id="price-btc">$0.0000</div>
                     <div class="crypto-change" id="change-btc">0.00%</div>
                 </div>
                 <div class="crypto-price-item crypto-eth">
@@ -526,7 +526,7 @@
                         <span class="crypto-icon">⟠</span>
                         ETH
                     </div>
-                    <div class="crypto-price" id="price-eth">$0.00</div>
+                    <div class="crypto-price" id="price-eth">$0.0000</div>
                     <div class="crypto-change" id="change-eth">0.00%</div>
                 </div>
                 <div class="crypto-price-item crypto-sol">
@@ -534,7 +534,7 @@
                         <span class="crypto-icon">◎</span>
                         SOL
                     </div>
-                    <div class="crypto-price" id="price-sol">$0.00</div>
+                    <div class="crypto-price" id="price-sol">$0.0000</div>
                     <div class="crypto-change" id="change-sol">0.00%</div>
                 </div>
                 <div class="crypto-price-item crypto-bnb">
@@ -542,7 +542,7 @@
                         <span class="crypto-icon">⎈</span>
                         BNB
                     </div>
-                    <div class="crypto-price" id="price-bnb">$0.00</div>
+                    <div class="crypto-price" id="price-bnb">$0.0000</div>
                     <div class="crypto-change" id="change-bnb">0.00%</div>
                 </div>
                 <div class="crypto-price-item crypto-xrp">
@@ -550,7 +550,7 @@
                         <span class="crypto-icon">✕</span>
                         XRP
                     </div>
-                    <div class="crypto-price" id="price-xrp">$0.00</div>
+                    <div class="crypto-price" id="price-xrp">$0.0000</div>
                     <div class="crypto-change" id="change-xrp">0.00%</div>
                 </div>
                 <div class="crypto-price-item crypto-doge">
@@ -558,7 +558,7 @@
                         <span class="crypto-icon">Ð</span>
                         DOGE
                     </div>
-                    <div class="crypto-price" id="price-doge">$0.00</div>
+                    <div class="crypto-price" id="price-doge">$0.0000</div>
                     <div class="crypto-change" id="change-doge">0.00%</div>
                 </div>
             </div>
@@ -766,7 +766,7 @@
 
             try {
                 const ids = cryptocurrencies.map(crypto => crypto.apiId).join(',');
-                const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+                const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&precision=8`;
                 
                 const response = await fetch(url);
                 const data = await response.json();
@@ -794,12 +794,12 @@
 
         function getSimulatedPrice(symbol) {
             const basePrices = {
-                'BTC': 61123,
-                'ETH': 3485,
-                'SOL': 178,
-                'BNB': 582,
-                'XRP': 0.615,
-                'DOGE': 0.148
+                'BTC': 101234.56,
+                'ETH': 5289.12,
+                'SOL': 187.34,
+                'BNB': 623.45,
+                'XRP': 0.6789,
+                'DOGE': 0.1567
             };
             
             const basePrice = basePrices[symbol] || 100;
@@ -812,10 +812,10 @@
             const changeElement = document.getElementById(`change-${symbol.toLowerCase()}`);
             
             if (priceElement && changeElement) {
-                // Formatowanie ceny
+                // Formatowanie ceny - ZAWSZE 4 miejsca po przecinku
                 const formattedPrice = price.toLocaleString('en-US', {
-                    minimumFractionDigits: symbol === 'XRP' || symbol === 'DOGE' ? 4 : 2,
-                    maximumFractionDigits: symbol === 'XRP' || symbol === 'DOGE' ? 4 : 2
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 4
                 });
                 
                 priceElement.textContent = `$${formattedPrice}`;
@@ -833,7 +833,7 @@
         // Funkcja do pobierania ceny BTC
         async function fetchBTCPrice() {
             try {
-                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true');
+                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true&precision=8');
                 const data = await response.json();
                 const currentPrice = data.bitcoin.usd;
                 const change24h = data.bitcoin.usd_24h_change || 0;
@@ -852,10 +852,10 @@
             const priceElement = document.getElementById('btcPrice');
             const changeElement = document.getElementById('btcChange');
             
-            // Formatowanie ceny
+            // Formatowanie ceny - 4 miejsca po przecinku
             const formattedPrice = currentPrice.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits: 4,
+                maximumFractionDigits: 4
             });
             
             priceElement.textContent = `$${formattedPrice}`;
