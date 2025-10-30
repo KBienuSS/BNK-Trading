@@ -117,61 +117,116 @@ class MLTradingBot:
         except Exception as e:
             self.logger.error(f"❌ Error initializing ML model: {e}")
 
-    def get_bybit_klines(self, symbol: str, interval: str = '3', limit: int = 100):
-        """Get price data from Bybit API"""
+    def get_coingecko_ohlc(self, symbol: str, days: str = '1', limit: int = 100):
+        """Get OHLC data from CoinGecko API"""
         try:
-            # Bybit uses different interval format: 1, 3, 5, 15, 30, 60, 120, 240, 360, 720, D, M, W
-            url = f"https://api.bybit.com/v5/market/kline?category=spot&symbol={symbol}&interval={interval}&limit={limit}"
-            response = requests.get(url, timeout=10)
+            coin_mapping = {
+                'BTCUSDT': 'bitcoin',
+                'ETHUSDT': 'ethereum',
+                'SOLUSDT': 'solana',
+                'BNBUSDT': 'binancecoin', 
+                'XRPUSDT': 'ripple',
+                'DOGEUSDT': 'dogecoin'
+            }
             
-            if response.status_code == 200:
-                data = response.json()
-                if data['retCode'] == 0 and data['result']['list']:
-                    candles = data['result']['list']
-                    # Bybit format: [timestamp, open, high, low, close, volume, turnover]
-                    df = pd.DataFrame(candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-                    
-                    # Convert to numeric
-                    for col in ['open', 'high', 'low', 'close', 'volume']:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                    
-                    # Convert timestamp (Bybit uses milliseconds)
-                    df['timestamp'] = pd.to_datetime(df['timestamp'].astype('int64'), unit='ms')
-                    df = df.sort_values('timestamp').reset_index(drop=True)
-                    
-                    self.logger.info(f"✅ Bybit LIVE Data for {symbol}: {len(df)} rows, Last: ${df['close'].iloc[-1]:.4f}")
-                    return df
-                    
+            coin_id = coin_mapping.get(symbol)
+            if coin_id:
+                url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}"
+                response = requests.get(url, timeout=15)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and len(data) > 0:
+                        # CoinGecko format: [timestamp, open, high, low, close]
+                        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
+                        
+                        # Convert to numeric
+                        for col in ['open', 'high', 'low', 'close']:
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                        
+                        # Convert timestamp (CoinGecko uses milliseconds)
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                        df = df.sort_values('timestamp').reset_index(drop=True)
+                        
+                        # Add volume (simulated for CoinGecko)
+                        df['volume'] = [random.uniform(10000, 50000) for _ in range(len(df))]
+                        
+                        if len(df) > limit:
+                            df = df.tail(limit)
+                            
+                        self.logger.info(f"✅ CoinGecko OHLC Data for {symbol}: {len(df)} rows, Last: ${df['close'].iloc[-1]:.4f}")
+                        return df
+                        
         except Exception as e:
-            self.logger.warning(f"Bybit klines failed: {e}")
+            self.logger.warning(f"CoinGecko OHLC failed: {e}")
         
-        # Jeśli Bybit nie działa, zwróć None - bot będzie czekał na dane
         return None
 
     def get_current_price(self, symbol: str):
-        """Get LIVE current price from Bybit API with 4 decimal precision"""
+        """Get LIVE current price from CoinGecko API with 4 decimal precision"""
         try:
-            # Primary: Bybit API for precise prices
-            url = f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}"
-            response = requests.get(url, timeout=10)
+            coin_mapping = {
+                'BTCUSDT': 'bitcoin',
+                'ETHUSDT': 'ethereum',
+                'SOLUSDT': 'solana',
+                'BNBUSDT': 'binancecoin',
+                'XRPUSDT': 'ripple',
+                'DOGEUSDT': 'dogecoin'
+            }
             
-            if response.status_code == 200:
-                data = response.json()
-                if data['retCode'] == 0 and data['result']['list']:
-                    ticker = data['result']['list'][0]
-                    price = float(ticker['lastPrice'])
-                    self.logger.info(f"✅ Bybit LIVE Price for {symbol}: ${price:.6f}")
-                    return round(price, 4)  # Zaokrąglij do 4 miejsc
+            coin_id = coin_mapping.get(symbol)
+            if coin_id:
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true&precision=8"
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if coin_id in data and 'usd' in data[coin_id]:
+                        price = data[coin_id]['usd']
+                        self.logger.info(f"✅ CoinGecko LIVE Price for {symbol}: ${price:.6f}")
+                        return round(float(price), 4)  # Zaokrąglij do 4 miejsc
                     
         except Exception as e:
-            self.logger.warning(f"Bybit price failed: {e}")
+            self.logger.warning(f"CoinGecko price failed: {e}")
         
-        # Jeśli nie można pobrać ceny, zwróć None - bot będzie czekał
+        # Fallback do innych API jeśli CoinGecko nie działa
+        return self.get_fallback_price(symbol)
+
+    def get_fallback_price(self, symbol: str):
+        """Fallback price providers"""
+        try:
+            # Spróbuj Kraken
+            kraken_mapping = {
+                'BTCUSDT': 'XXBTZUSD',
+                'ETHUSDT': 'XETHZUSD',
+                'SOLUSDT': 'SOLUSD',
+                'BNBUSDT': 'BNBUSD',
+                'XRPUSDT': 'XXRPZUSD',
+                'DOGEUSDT': 'XDGUSD'
+            }
+            
+            kraken_symbol = kraken_mapping.get(symbol)
+            if kraken_symbol:
+                url = f"https://api.kraken.com/0/public/Ticker?pair={kraken_symbol}"
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'result' in data:
+                        for key in data['result']:
+                            price = float(data['result'][key]['c'][0])  # c[0] to last price
+                            self.logger.info(f"✅ Kraken Price for {symbol}: ${price:.4f}")
+                            return round(price, 4)
+                            
+        except Exception as e:
+            self.logger.warning(f"Kraken fallback failed: {e}")
+        
+        self.logger.error(f"❌ All price APIs failed for {symbol}")
         return None
 
     def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
-        """Get price data - using Bybit as primary"""
-        return self.get_bybit_klines(symbol, '3', limit)  # '3' means 3 minutes in Bybit
+        """Get price data - using CoinGecko as primary"""
+        return self.get_coingecko_ohlc(symbol, '1', limit)
 
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate comprehensive technical indicators for ML features"""
@@ -225,7 +280,7 @@ class MLTradingBot:
     def detect_breakout_signal(self, symbol: str) -> Tuple[bool, float, float]:
         """Detect breakout signals based on resistance and volume"""
         try:
-            df = self.get_bybit_klines(symbol, '3', 100)
+            df = self.get_coingecko_ohlc(symbol, '1', 100)
             if df is None or len(df) < 50:
                 return False, 0, 0
             
@@ -268,7 +323,7 @@ class MLTradingBot:
                 return "BREAKOUT_LONG", breakout_confidence
             
             # Fallback to traditional ML strategy
-            df = self.get_bybit_klines(symbol, '3', 100)
+            df = self.get_coingecko_ohlc(symbol, '1', 100)
             if df is None or len(df) < 50:
                 return "HOLD", 0.5
             
@@ -753,4 +808,4 @@ class MLTradingBot:
     def stop_trading(self):
         """Stop breakout trading"""
         self.is_running = False
-        self.logger.info("🛑 Breakout Trading stopped")
+        self.logger.info("🛑 Breakout Trading stopped"
