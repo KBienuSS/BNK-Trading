@@ -19,7 +19,7 @@ logging.basicConfig(
     ]
 )
 
-class EnhancedTradingBot:
+class MLTradingBot:
     def __init__(self, initial_capital=10000, leverage=10):
         self.virtual_capital = initial_capital
         self.virtual_balance = initial_capital
@@ -699,5 +699,5 @@ class EnhancedTradingBot:
             'last_update': self.dashboard_data['last_update'].isoformat()
         }
 
-# Global bot instance
-trading_bot = EnhancedTradingBot(initial_capital=10000, leverage=10)
+# Global bot instance - zmieniona nazwa klasy
+trading_bot = MLTradingBot(initial_capital=10000, leverage=10)
