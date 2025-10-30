@@ -193,7 +193,7 @@ class MLTradingBot:
         return self.get_fallback_price(symbol)
 
     def get_fallback_price(self, symbol: str):
-        """Fallback price providers"""
+        """Fallback price providers - ONLY REAL APIs"""
         try:
             # Spróbuj Kraken
             kraken_mapping = {
@@ -220,27 +220,34 @@ class MLTradingBot:
                             
         except Exception as e:
             self.logger.warning(f"Kraken fallback failed: {e}")
-        
-        # Ostateczny fallback - symulowane ceny z AKTUALNYMI wartościami
-        simulated_price = self.get_simulated_price(symbol)
-        self.logger.warning(f"⚠️ Using simulated price for {symbol}: ${simulated_price:.6f}")
-        return simulated_price
 
-    def get_simulated_price(self, symbol: str):
-        """Get simulated price with CURRENT market values"""
-        current_base_prices = {
-            'BTCUSDT': 101234.56,   # Aktualna cena BTC ~101k
-            'ETHUSDT': 5289.12,     # Aktualna cena ETH ~5.3k
-            'SOLUSDT': 187.34,      # Aktualna cena SOL ~187
-            'BNBUSDT': 623.45,      # Aktualna cena BNB ~623
-            'XRPUSDT': 0.6789,      # Aktualna cena XRP ~0.68
-            'DOGEUSDT': 0.1567      # Aktualna cena DOGE ~0.16
-        }
+        # Spróbuj Binance
+        try:
+            binance_mapping = {
+                'BTCUSDT': 'BTCUSDT',
+                'ETHUSDT': 'ETHUSDT', 
+                'SOLUSDT': 'SOLUSDT',
+                'BNBUSDT': 'BNBUSDT',
+                'XRPUSDT': 'XRPUSDT',
+                'DOGEUSDT': 'DOGEUSDT'
+            }
+            
+            binance_symbol = binance_mapping.get(symbol)
+            if binance_symbol:
+                url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_symbol}"
+                response = requests.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    price = float(data['price'])
+                    self.logger.info(f"✅ Binance Price for {symbol}: ${price:.6f}")
+                    return round(price, 6)
+                    
+        except Exception as e:
+            self.logger.warning(f"Binance fallback failed: {e}")
         
-        base_price = current_base_prices.get(symbol, 100)
-        # Mała losowa zmiana (-0.5% do +0.5%)
-        random_change = (random.random() - 0.5) * 0.01
-        return base_price * (1 + random_change)
+        self.logger.error(f"❌ All price APIs failed for {symbol}")
+        return None
 
     def get_binance_klines(self, symbol: str, interval: str = '3m', limit: int = 100):
         """Get price data - using CoinGecko as primary"""
