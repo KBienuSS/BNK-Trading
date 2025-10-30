@@ -61,14 +61,14 @@ class MLTradingBot:
         self.min_volume_ratio = 1.5
         self.max_position_value = 0.30
         
-        # Position sizes
+        # Position sizes - ZREDUKOWANE
         self.position_sizes = {
-            'ETHUSDT': 2.5,
-            'BTCUSDT': 0.08,
-            'SOLUSDT': 12.0,
-            'BNBUSDT': 15.0,
-            'XRPUSDT': 4500.0,
-            'DOGEUSDT': 25000.0,
+            'ETHUSDT': 0.5,    # Zmniejszone z 2.5
+            'BTCUSDT': 0.015,  # Zmniejszone z 0.08
+            'SOLUSDT': 2.0,    # Zmniejszone z 12.0
+            'BNBUSDT': 3.0,    # Zmniejszone z 15.0
+            'XRPUSDT': 900.0,  # Zmniejszone z 4500.0
+            'DOGEUSDT': 5000.0, # Zmniejszone z 25000.0
         }
         
         # Statistics
@@ -137,7 +137,7 @@ class MLTradingBot:
                 data = response.json()
                 price = float(data['price'])
                 self.logger.info(f"✅ Binance LIVE Price for {symbol}: ${price:.6f}")
-                return price
+                return round(price, 4)  # Zaokrąglij do 4 miejsc
                 
         except Exception as e:
             self.logger.warning(f"Binance price failed: {e}")
@@ -154,7 +154,7 @@ class MLTradingBot:
                     if coin_id in data and 'usd' in data[coin_id]:
                         price = data[coin_id]['usd']
                         self.logger.info(f"✅ CoinGecko LIVE Price for {symbol}: ${price:.6f}")
-                        return float(price)
+                        return round(float(price), 4)  # Zaokrąglij do 4 miejsc
                         
         except Exception as e:
             self.logger.warning(f"CoinGecko price failed: {e}")
@@ -392,16 +392,16 @@ class MLTradingBot:
             return "HOLD", 0.5
 
     def calculate_breakout_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
-        """Calculate position size according to asset allocation"""
+        """Calculate position size according to asset allocation - POPRAWIONE"""
         try:
-            # Base allocation from portfolio
+            # Base allocation from portfolio (maksymalnie 22% dla ETH, 20% dla BTC, etc.)
             allocation_percentage = self.asset_allocation.get(symbol, 0.15)
             
             # Adjustment based on confidence
-            confidence_multiplier = 0.7 + (confidence * 0.3)  # 0.7-1.0
+            confidence_multiplier = 0.5 + (confidence * 0.5)  # 0.5-1.0 (bardziej konserwatywne)
             
-            # Calculate position value
-            position_value = (self.virtual_capital * allocation_percentage) * confidence_multiplier
+            # Calculate position value - NIE UŻYWAJ confidence_multiplier do alokacji
+            position_value = self.virtual_capital * allocation_percentage
             
             # Maximum position limit (30% of deposit)
             max_position_value = self.virtual_capital * self.max_position_value
@@ -410,13 +410,20 @@ class MLTradingBot:
             # Calculate quantity
             quantity = position_value / price
             
-            # Use historical size if smaller
+            # Use historical size if smaller - ZREDUKOWANE WIELKOŚCI
             historical_quantity = self.position_sizes.get(symbol, quantity)
             final_quantity = min(quantity, historical_quantity)
             
-            # Recalculate final value
+            # Przelicz finalną wartość
             final_position_value = final_quantity * price
             margin_required = final_position_value / self.leverage
+            
+            # Dodatkowe zabezpieczenie - maksymalnie 15% kapitału na pozycję
+            max_safe_position = self.virtual_capital * 0.15
+            if final_position_value > max_safe_position:
+                final_quantity = (max_safe_position) / price
+                final_position_value = final_quantity * price
+                margin_required = final_position_value / self.leverage
             
             return final_quantity, final_position_value, margin_required
             
@@ -494,7 +501,7 @@ class MLTradingBot:
         position = {
             'symbol': symbol,
             'side': 'LONG',
-            'entry_price': current_price,
+            'entry_price': round(current_price, 4),  # Zapis z 4 miejscami
             'quantity': quantity,
             'leverage': self.leverage,
             'margin': margin_required,
@@ -517,7 +524,7 @@ class MLTradingBot:
             self.logger.info(f"📈 MOMENTUM OPEN: {quantity:.6f} {symbol} @ ${current_price:.4f}")
         
         self.logger.info(f"   📊 TP: ${exit_levels['take_profit']:.4f} | SL: ${exit_levels['stop_loss']:.4f}")
-        self.logger.info(f"   💰 Position: ${position_value:.2f} ({self.asset_allocation[symbol]*100:.0f}% allocation)")
+        self.logger.info(f"   💰 Position: ${position_value:.2f} ({position_value/self.virtual_capital*100:.1f}% of capital)")
         self.logger.info(f"   🤖 Confidence: {confidence:.1%} | Leverage: {self.leverage}X")
         
         return position_id
@@ -535,7 +542,7 @@ class MLTradingBot:
             if not current_price:
                 continue
             
-            position['current_price'] = current_price
+            position['current_price'] = round(current_price, 4)  # Zapis z 4 miejscami
             
             if position['side'] == 'LONG':
                 pnl_pct = (current_price - position['entry_price']) / position['entry_price']
@@ -616,7 +623,7 @@ class MLTradingBot:
             'symbol': position['symbol'],
             'side': position['side'],
             'entry_price': position['entry_price'],
-            'exit_price': exit_price,
+            'exit_price': round(exit_price, 4),  # Zapis z 4 miejscami
             'quantity': position['quantity'],
             'realized_pnl': realized_pnl_after_fee,
             'exit_reason': exit_reason,
@@ -671,8 +678,8 @@ class MLTradingBot:
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
                     'symbol': position['symbol'],
                     'side': position['side'],
-                    'entry_price': position['entry_price'],
-                    'current_price': current_price,
+                    'entry_price': position['entry_price'],  # Już z 4 miejscami
+                    'current_price': round(current_price, 4),  # Z 4 miejscami
                     'quantity': position['quantity'],
                     'leverage': position['leverage'],
                     'liquidation_price': position['liquidation_price'],
