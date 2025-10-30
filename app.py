@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import random
 import requests
 from trading_bot import TradingBot
-from trading_bot_ml import MLTradingBot
+from trading_bot_ml import EnhancedMLTradingBot
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -69,7 +69,7 @@ def start_bot():
     try:
         if bot_status != "running":
             # Start ML bot by default
-            ml_trading_bot = MLTradingBot()
+            ml_trading_bot = EnhancedMLTradingBot()
             
             bot_thread = threading.Thread(target=run_bot)
             bot_thread.daemon = True
@@ -122,4 +122,5 @@ def run_bot():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
