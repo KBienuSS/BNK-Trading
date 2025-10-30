@@ -768,43 +768,59 @@
                 const ids = cryptocurrencies.map(crypto => crypto.apiId).join(',');
                 const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&precision=8`;
                 
+                console.log('🔄 Pobieranie cen kryptowalut z CoinGecko...');
                 const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
 
+                // Sprawdź czy wszystkie ceny są dostępne
+                let allPricesValid = true;
                 cryptocurrencies.forEach(crypto => {
-                    if (data[crypto.apiId]) {
-                        const currentPrice = data[crypto.apiId].usd;
-                        const change24h = data[crypto.apiId].usd_24h_change || 0;
-                        
-                        updateCryptoPriceDisplay(crypto.symbol, currentPrice, change24h);
-                        lastCryptoPrices[crypto.symbol] = currentPrice;
+                    if (!data[crypto.apiId] || data[crypto.apiId].usd === undefined) {
+                        allPricesValid = false;
+                        console.warn(`❌ Brak ceny dla: ${crypto.symbol}`);
                     }
                 });
 
-            } catch (error) {
-                console.error('Błąd pobierania cen kryptowalut:', error);
-                // Fallback - używamy symulowanych cen
+                if (!allPricesValid) {
+                    throw new Error('Niekompletne dane z API');
+                }
+
                 cryptocurrencies.forEach(crypto => {
-                    const simulatedPrice = getSimulatedPrice(crypto.symbol);
-                    const simulatedChange = (Math.random() - 0.5) * 10;
-                    updateCryptoPriceDisplay(crypto.symbol, simulatedPrice, simulatedChange);
+                    const currentPrice = data[crypto.apiId].usd;
+                    const change24h = data[crypto.apiId].usd_24h_change || 0;
+                    
+                    updateCryptoPriceDisplay(crypto.symbol, currentPrice, change24h);
+                    lastCryptoPrices[crypto.symbol] = currentPrice;
+                });
+
+                console.log('✅ Pobrano aktualne ceny z CoinGecko');
+
+            } catch (error) {
+                console.error('❌ Błąd pobierania cen kryptowalut:', error);
+                
+                // W przypadku błędu używamy ostatnich znanych cen z małą losową zmianą
+                cryptocurrencies.forEach(crypto => {
+                    const lastKnownPrice = lastCryptoPrices[crypto.symbol];
+                    if (lastKnownPrice && lastKnownPrice > 0) {
+                        // Użyj ostatniej znanej ceny z bardzo małą losową zmianą (±0.1%)
+                        const smallChange = (Math.random() - 0.5) * 0.002;
+                        const currentPrice = lastKnownPrice * (1 + smallChange);
+                        const simulatedChange = (Math.random() - 0.5) * 0.5; // ±0.25%
+                        
+                        updateCryptoPriceDisplay(crypto.symbol, currentPrice, simulatedChange);
+                        console.log(`⚠️ Używam ostatniej znanej ceny dla ${crypto.symbol}: $${currentPrice.toFixed(4)}`);
+                    } else {
+                        // Jeśli nie ma ostatniej znanej ceny, wyświetl błąd
+                        updateCryptoPriceDisplay(crypto.symbol, 0, 0);
+                        console.error(`❌ Brak danych dla ${crypto.symbol}`);
+                    }
                 });
             }
-        }
-
-        function getSimulatedPrice(symbol) {
-            const basePrices = {
-                'BTC': 101234.56,
-                'ETH': 5289.12,
-                'SOL': 187.34,
-                'BNB': 623.45,
-                'XRP': 0.6789,
-                'DOGE': 0.1567
-            };
-            
-            const basePrice = basePrices[symbol] || 100;
-            const randomChange = (Math.random() - 0.5) * 0.02; // -1% do +1%
-            return basePrice * (1 + randomChange);
         }
 
         function updateCryptoPriceDisplay(symbol, price, change24h) {
@@ -812,21 +828,29 @@
             const changeElement = document.getElementById(`change-${symbol.toLowerCase()}`);
             
             if (priceElement && changeElement) {
-                // Formatowanie ceny - ZAWSZE 4 miejsca po przecinku
-                const formattedPrice = price.toLocaleString('en-US', {
-                    minimumFractionDigits: 4,
-                    maximumFractionDigits: 4
-                });
-                
-                priceElement.textContent = `$${formattedPrice}`;
-                
-                // Formatowanie zmiany
-                const changeSign = change24h >= 0 ? '+' : '';
-                changeElement.textContent = `${changeSign}${change24h.toFixed(2)}%`;
-                changeElement.className = `crypto-change ${change24h >= 0 ? 'positive-change' : 'negative-change'}`;
-                
-                // Kolor ceny na podstawie zmiany
-                priceElement.style.color = change24h >= 0 ? 'var(--profit-color)' : 'var(--loss-color)';
+                if (price === 0) {
+                    // Błąd - brak danych
+                    priceElement.textContent = `Błąd API`;
+                    changeElement.textContent = `0.00%`;
+                    priceElement.style.color = '#ff4444';
+                    changeElement.className = 'crypto-change';
+                } else {
+                    // Formatowanie ceny - ZAWSZE 4 miejsca po przecinku
+                    const formattedPrice = price.toLocaleString('en-US', {
+                        minimumFractionDigits: 4,
+                        maximumFractionDigits: 4
+                    });
+                    
+                    priceElement.textContent = `$${formattedPrice}`;
+                    
+                    // Formatowanie zmiany
+                    const changeSign = change24h >= 0 ? '+' : '';
+                    changeElement.textContent = `${changeSign}${change24h.toFixed(2)}%`;
+                    changeElement.className = `crypto-change ${change24h >= 0 ? 'positive-change' : 'negative-change'}`;
+                    
+                    // Kolor ceny na podstawie zmiany
+                    priceElement.style.color = change24h >= 0 ? 'var(--profit-color)' : 'var(--loss-color)';
+                }
             }
         }
 
@@ -843,7 +867,7 @@
                 
             } catch (error) {
                 console.error('Błąd pobierania ceny BTC:', error);
-                document.getElementById('btcPrice').textContent = 'Error';
+                document.getElementById('btcPrice').textContent = 'Błąd API';
                 document.getElementById('btcPrice').style.color = '#ff4444';
             }
         }
@@ -852,19 +876,21 @@
             const priceElement = document.getElementById('btcPrice');
             const changeElement = document.getElementById('btcChange');
             
-            // Formatowanie ceny - 4 miejsca po przecinku
-            const formattedPrice = currentPrice.toLocaleString('en-US', {
-                minimumFractionDigits: 4,
-                maximumFractionDigits: 4
-            });
-            
-            priceElement.textContent = `$${formattedPrice}`;
-            priceElement.style.color = '#ffffff';
-            
-            // Formatowanie zmiany
-            const changeSign = change24h >= 0 ? '+' : '';
-            changeElement.innerHTML = `${changeSign}${change24h.toFixed(2)}%`;
-            changeElement.className = `btc-change ${change24h >= 0 ? 'positive-change' : 'negative-change'}`;
+            if (currentPrice) {
+                // Formatowanie ceny - 4 miejsca po przecinku
+                const formattedPrice = currentPrice.toLocaleString('en-US', {
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 4
+                });
+                
+                priceElement.textContent = `$${formattedPrice}`;
+                priceElement.style.color = '#ffffff';
+                
+                // Formatowanie zmiany
+                const changeSign = change24h >= 0 ? '+' : '';
+                changeElement.innerHTML = `${changeSign}${change24h.toFixed(2)}%`;
+                changeElement.className = `btc-change ${change24h >= 0 ? 'positive-change' : 'negative-change'}`;
+            }
         }
 
         // Inicjalizacja wykresu
