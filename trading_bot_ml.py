@@ -362,7 +362,7 @@ class EnhancedTradingBot:
         liquidation_risk = (current_price - position['liquidation_price']) / position['entry_price']
         
         # Tylko ekstremalne sytuacje powodują wcześniejsze zamknięcie
-        if liquidation_risk <= -0.25: 25% straty
+        if liquidation_risk <= -0.25:  # 25% straty
             self.logger.info(f"⚠️ Extreme liquidation risk: {liquidation_risk:.1%} - closing early")
             return True
             
