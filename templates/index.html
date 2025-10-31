@@ -779,255 +779,182 @@
     </div>
 
     <script>
-        // Zmienne do śledzenia cen
-let cryptoPrices = {
-    'BTCUSDT': { price: 0, change: 0, lastUpdated: null },
-    'ETHUSDT': { price: 0, change: 0, lastUpdated: null },
-    'SOLUSDT': { price: 0, change: 0, lastUpdated: null },
-    'BNBUSDT': { price: 0, change: 0, lastUpdated: null },
-    'XRPUSDT': { price: 0, change: 0, lastUpdated: null },
-    'DOGEUSDT': { price: 0, change: 0, lastUpdated: null }
-};
-
-// Flaga śledząca czy ceny zostały kiedykolwiek załadowane
-let pricesInitialized = false;
-
-// Funkcja do pobierania cen wszystkich kryptowalut
-async function fetchAllCryptoPrices() {
-    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
-    
-    // Używamy Promise.allSettled żeby kontynuować nawet gdy niektóre API failują
-    const promises = symbols.map(symbol => fetchCryptoPrice(symbol));
-    const results = await Promise.allSettled(promises);
-    
-    // Sprawdź czy jakakolwiek cena została załadowana
-    const successfulFetches = results.filter(result => result.status === 'fulfilled').length;
-    if (successfulFetches > 0 && !pricesInitialized) {
-        pricesInitialized = true;
-        console.log(`✅ Successfully loaded ${successfulFetches}/6 crypto prices`);
-    }
-}
-
-// Funkcja do pobierania ceny pojedynczej kryptowaluty
-async function fetchCryptoPrice(symbol) {
-    try {
-        // Spróbuj KuCoin API jako główne źródło
-        const kucoinSymbol = symbol.replace('USDT', '-USDT');
-        const kucoinResponse = await fetch(`https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${kucoinSymbol}`, {
-            timeout: 5000
-        });
-        
-        if (kucoinResponse.ok) {
-            const data = await kucoinResponse.json();
-            if (data.code === '200000' && data.data) {
-                const currentPrice = parseFloat(data.data.price);
-                updateCryptoPriceDisplay(symbol, currentPrice);
-                return { success: true, source: 'kucoin', symbol, price: currentPrice };
-            }
-        }
-    } catch (error) {
-        console.warn(`⚠️ KuCoin API failed for ${symbol}:`, error.message);
-    }
-    
-    try {
-        // Fallback do CoinGecko
-        const coinId = symbolToCoinGeckoId(symbol);
-        if (coinId) {
-            const coingeckoResponse = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`, {
-                timeout: 5000
-            });
-            
-            if (coingeckoResponse.ok) {
-                const data = await coingeckoResponse.json();
-                if (data[coinId] && data[coinId].usd) {
-                    const currentPrice = data[coinId].usd;
-                    const change24h = data[coinId].usd_24h_change || 0;
-                    updateCryptoPriceDisplay(symbol, currentPrice, change24h);
-                    return { success: true, source: 'coingecko', symbol, price: currentPrice, change: change24h };
-                }
-            }
-        }
-    } catch (error) {
-        console.warn(`⚠️ CoinGecko API failed for ${symbol}:`, error.message);
-    }
-    
-    // Jeśli oba API zawiodą, nie aktualizujemy ceny - pozostaje poprzednia wartość
-    console.log(`⏸️ Keeping previous price for ${symbol} - API unavailable`);
-    return { success: false, symbol };
-}
-
-// Mapowanie symboli na ID CoinGecko
-function symbolToCoinGeckoId(symbol) {
-    const mapping = {
-        'BTCUSDT': 'bitcoin',
-        'ETHUSDT': 'ethereum',
-        'SOLUSDT': 'solana',
-        'BNBUSDT': 'binancecoin',
-        'XRPUSDT': 'ripple',
-        'DOGEUSDT': 'dogecoin'
-    };
-    return mapping[symbol];
-}
-
-// Aktualizacja wyświetlania ceny
-function updateCryptoPriceDisplay(symbol, currentPrice, change24h = null) {
-    const cryptoKey = symbol.toLowerCase().replace('usdt', '');
-    const priceElement = document.getElementById(`${cryptoKey}Price`);
-    const changeElement = document.getElementById(`${cryptoKey}Change`);
-    
-    if (!priceElement || !changeElement) return;
-    
-    const previousData = cryptoPrices[symbol] || { price: 0, change: 0 };
-    const previousPrice = previousData.price;
-    
-    // Formatowanie ceny w zależności od wartości
-    let formattedPrice;
-    if (currentPrice < 1) {
-        formattedPrice = `$${currentPrice.toFixed(4)}`;
-    } else if (currentPrice < 10) {
-        formattedPrice = `$${currentPrice.toFixed(3)}`;
-    } else if (currentPrice < 1000) {
-        formattedPrice = `$${currentPrice.toFixed(2)}`;
-    } else {
-        formattedPrice = `$${currentPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}`;
-    }
-    
-    // Aktualizuj cenę tylko jeśli się zmieniła
-    if (priceElement.textContent !== formattedPrice) {
-        priceElement.textContent = formattedPrice;
-        
-        // Animacja aktualizacji ceny tylko gdy cena faktycznie się zmieniła
-        if (previousPrice > 0 && Math.abs(currentPrice - previousPrice) > 0.0001) {
-            priceElement.classList.add('price-update');
-            setTimeout(() => {
-                priceElement.classList.remove('price-update');
-            }, 1000);
-        }
-    }
-    
-    // Oblicz zmianę ceny
-    let changePercent;
-    if (change24h !== null) {
-        changePercent = change24h;
-    } else if (previousPrice > 0) {
-        changePercent = ((currentPrice - previousPrice) / previousPrice) * 100;
-    } else {
-        changePercent = 0;
-    }
-    
-    // Aktualizuj wyświetlanie zmiany tylko jeśli się zmieniła
-    const changeText = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
-    if (changeElement.textContent !== changeText) {
-        changeElement.textContent = changeText;
-        
-        // Ustaw kolory i klasy
-        if (changePercent > 0) {
-            changeElement.className = 'crypto-change positive';
-        } else if (changePercent < 0) {
-            changeElement.className = 'crypto-change negative';
-        } else {
-            changeElement.className = 'crypto-change neutral';
-        }
-    }
-    
-    // Zapisz aktualną cenę tylko jeśli jest prawidłowa
-    if (currentPrice > 0) {
-        cryptoPrices[symbol] = {
-            price: currentPrice,
-            change: changePercent,
-            lastUpdated: new Date()
+       // Zmienne do śledzenia cen
+        let cryptoPrices = {
+            'BTCUSDT': { price: 0, change: 0, lastUpdated: null },
+            'ETHUSDT': { price: 0, change: 0, lastUpdated: null },
+            'SOLUSDT': { price: 0, change: 0, lastUpdated: null },
+            'BNBUSDT': { price: 0, change: 0, lastUpdated: null },
+            'XRPUSDT': { price: 0, change: 0, lastUpdated: null },
+            'DOGEUSDT': { price: 0, change: 0, lastUpdated: null }
         };
-    }
-}
-
-// Funkcja do wyświetlania statusu ładowania
-function showLoadingStatus() {
-    const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
-    symbols.forEach(symbol => {
-        const cryptoKey = symbol.toLowerCase().replace('usdt', '');
-        const priceElement = document.getElementById(`${cryptoKey}Price`);
-        const changeElement = document.getElementById(`${cryptoKey}Change`);
         
-        if (priceElement && priceElement.textContent === '$--.--') {
-            priceElement.textContent = 'Ładowanie...';
-            changeElement.textContent = '...';
-            changeElement.className = 'crypto-change neutral';
+        // Funkcja do pobierania cen wszystkich kryptowalut - RÓWNOLEGLE
+        async function fetchAllCryptoPrices() {
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            
+            // Używamy Promise.all dla równoległego pobierania
+            const promises = symbols.map(symbol => fetchCryptoPriceFast(symbol));
+            const results = await Promise.allSettled(promises);
+            
+            const successfulFetches = results.filter(result => result.status === 'fulfilled').length;
+            if (successfulFetches > 0) {
+                console.log(`✅ Crypto prices updated: ${successfulFetches}/6 successful`);
+            }
         }
-    });
-}
-
-// Funkcja do inicjalizacji cen przy starcie
-async function initializeCryptoPrices() {
-    console.log('🔄 Initializing crypto prices...');
-    showLoadingStatus();
-    
-    // Poczekaj chwilę żeby pokazać status ładowania
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Spróbuj pobrać ceny
-    await fetchAllCryptoPrices();
-    
-    // Sprawdź czy jakieś ceny zostały załadowane
-    const loadedPrices = Object.values(cryptoPrices).filter(data => data.price > 0).length;
-    
-    if (loadedPrices === 0) {
-        console.log('⚠️ No crypto prices loaded - will retry on next interval');
-        // Ustaw placeholder dla wszystkich
-        const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
-        symbols.forEach(symbol => {
+        
+        // SZYBSZA wersja pobierania cen - tak jak w Active Positions
+        async function fetchCryptoPriceFast(symbol) {
+            try {
+                // Primary: KuCoin API - tak samo jak w bot
+                const kucoinSymbol = symbol.replace('USDT', '-USDT');
+                const kucoinPromise = fetch(`https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${kucoinSymbol}`, {
+                    signal: AbortSignal.timeout(3000) // Krótszy timeout
+                });
+        
+                const response = await kucoinPromise;
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.code === '200000' && data.data) {
+                        const currentPrice = parseFloat(data.data.price);
+                        updateCryptoPriceDisplay(symbol, currentPrice);
+                        return { success: true, source: 'kucoin', symbol, price: currentPrice };
+                    }
+                }
+            } catch (error) {
+                console.warn(`⚠️ KuCoin fast failed for ${symbol}:`, error.message);
+            }
+        
+            try {
+                // Fallback: CoinGecko - tak samo jak w bot
+                const coinId = symbolToCoinGeckoId(symbol);
+                if (coinId) {
+                    const coingeckoPromise = fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`, {
+                        signal: AbortSignal.timeout(3000)
+                    });
+        
+                    const response = await coingeckoPromise;
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data[coinId] && data[coinId].usd) {
+                            const currentPrice = data[coinId].usd;
+                            const change24h = data[coinId].usd_24h_change || 0;
+                            updateCryptoPriceDisplay(symbol, currentPrice, change24h);
+                            return { success: true, source: 'coingecko', symbol, price: currentPrice, change: change24h };
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn(`⚠️ CoinGecko fast failed for ${symbol}:`, error.message);
+            }
+        
+            // Jeśli oba API zawiodą, NIE aktualizujemy - zachowujemy poprzednią cenę
+            console.log(`⏸️ Keeping previous price for ${symbol} - APIs unavailable`);
+            return { success: false, symbol };
+        }
+        
+        // Mapowanie symboli na ID CoinGecko
+        function symbolToCoinGeckoId(symbol) {
+            const mapping = {
+                'BTCUSDT': 'bitcoin',
+                'ETHUSDT': 'ethereum',
+                'SOLUSDT': 'solana',
+                'BNBUSDT': 'binancecoin',
+                'XRPUSDT': 'ripple',
+                'DOGEUSDT': 'dogecoin'
+            };
+            return mapping[symbol];
+        }
+        
+        // Aktualizacja wyświetlania ceny
+        function updateCryptoPriceDisplay(symbol, currentPrice, change24h = null) {
             const cryptoKey = symbol.toLowerCase().replace('usdt', '');
             const priceElement = document.getElementById(`${cryptoKey}Price`);
             const changeElement = document.getElementById(`${cryptoKey}Change`);
             
-            if (priceElement && priceElement.textContent === 'Ładowanie...') {
-                priceElement.textContent = '$--.--';
-                changeElement.textContent = '0.00%';
+            if (!priceElement || !changeElement) return;
+            
+            const previousData = cryptoPrices[symbol] || { price: 0, change: 0 };
+            const previousPrice = previousData.price;
+            
+            // Formatowanie ceny w zależności od wartości - TAK SAMO JAK W BOCIE
+            let formattedPrice;
+            if (symbol === 'XRPUSDT' || symbol === 'DOGEUSDT') {
+                formattedPrice = `$${currentPrice.toFixed(4)}`; // 4 miejsca dla małych cen
+            } else if (currentPrice < 10) {
+                formattedPrice = `$${currentPrice.toFixed(3)}`; // 3 miejsca dla cen < 10
+            } else if (currentPrice < 1000) {
+                formattedPrice = `$${currentPrice.toFixed(2)}`; // 2 miejsca dla większości
+            } else {
+                formattedPrice = `$${currentPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}`; // Formatowanie dla dużych liczb
             }
-        });
-    } else {
-        console.log(`✅ Successfully initialized ${loadedPrices}/6 crypto prices`);
-    }
-}
-
-// Inicjalizacja w DOMContentLoaded - dodaj do istniejącego event listenera:
-document.addEventListener('DOMContentLoaded', function() {
-    // ... istniejący kod ...
-    
-    // Inicjalizacja widgetu cen kryptowalut
-    initializeCryptoPrices();
-    
-    // Odświeżaj ceny co 20 sekund (dłuższy interwał żeby nie przeciążać API)
-    setInterval(fetchAllCryptoPrices, 20000);
-    
-    // ... reszta istniejącego kodu ...
-});
-
-// Dodaj timeout do fetch API
-const originalFetch = window.fetch;
-window.fetch = function(...args) {
-    const options = args[1] || {};
-    if (!options.timeout) {
-        options.timeout = 10000; // domyślny timeout 10 sekund
-    }
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), options.timeout);
-    
-    options.signal = controller.signal;
-    args[1] = options;
-    
-    clearTimeout(timeoutId);
-    
-    return originalFetch.apply(this, args)
-        .then(response => {
-            clearTimeout(timeoutId);
-            return response;
-        })
-        .catch(error => {
-            clearTimeout(timeoutId);
-            throw error;
-        });
-};
+            
+            // Aktualizuj cenę tylko jeśli się zmieniła
+            const currentDisplayPrice = priceElement.textContent.replace('$', '').replace(/,/g, '');
+            const newDisplayPrice = formattedPrice.replace('$', '').replace(/,/g, '');
+            
+            if (currentDisplayPrice !== newDisplayPrice) {
+                priceElement.textContent = formattedPrice;
+                
+                // Animacja aktualizacji ceny tylko gdy cena faktycznie się zmieniła
+                if (previousPrice > 0 && Math.abs(currentPrice - previousPrice) > 0.0001) {
+                    priceElement.classList.add('price-update');
+                    setTimeout(() => {
+                        priceElement.classList.remove('price-update');
+                    }, 800);
+                }
+            }
+            
+            // Oblicz zmianę ceny
+            let changePercent;
+            if (change24h !== null) {
+                changePercent = change24h;
+            } else if (previousPrice > 0) {
+                changePercent = ((currentPrice - previousPrice) / previousPrice) * 100;
+            } else {
+                changePercent = 0;
+            }
+            
+            // Aktualizuj wyświetlanie zmiany tylko jeśli się zmieniła
+            const changeText = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+            if (changeElement.textContent !== changeText) {
+                changeElement.textContent = changeText;
+                
+                // Ustaw kolory i klasy
+                if (changePercent > 0.01) { // Margines błędu
+                    changeElement.className = 'crypto-change positive';
+                } else if (changePercent < -0.01) {
+                    changeElement.className = 'crypto-change negative';
+                } else {
+                    changeElement.className = 'crypto-change neutral';
+                }
+            }
+            
+            // Zapisz aktualną cenę tylko jeśli jest prawidłowa
+            if (currentPrice > 0) {
+                cryptoPrices[symbol] = {
+                    price: currentPrice,
+                    change: changePercent,
+                    lastUpdated: new Date()
+                };
+            }
+        }
+        
+        // Funkcja do wyświetlania statusu ładowania
+        function showLoadingStatus() {
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            symbols.forEach(symbol => {
+                const cryptoKey = symbol.toLowerCase().replace('usdt', '');
+                const priceElement = document.getElementById(`${cryptoKey}Price`);
+                const changeElement = document.getElementById(`${cryptoKey}Change`);
+                
+                if (priceElement && priceElement.textContent === '$--.--') {
+                    priceElement.textContent = 'Ładowanie...';
+                    changeElement.textContent = '...';
+                    changeElement.className = 'crypto-change neutral';
+                }
+            });
+        }
 
         let accountChart;
         let updateInterval;
@@ -1417,13 +1344,17 @@ window.fetch = function(...args) {
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 Trading Dashboard - LIVE MODE');
             console.log('📍 Dashboard: http://localhost:5000');
+            console.log('🚀 Initializing fast crypto prices widget...');
             
             initChart();
             checkBotStatus();
             fetchTradingData();
             fetchBTCPrice()
-            fetchAllCryptoPrices();
-            setInterval(fetchAllCryptoPrices, 10000);
+            showLoadingStatus();
+            setTimeout(() => {
+                fetchAllCryptoPrices();
+            }, 1000);
+            setInterval(fetchAllCryptoPrices, 5000);
             
             // Odświeżaj dane co 3 sekundy
             updateInterval = setInterval(() => {
