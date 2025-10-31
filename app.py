@@ -52,18 +52,12 @@ def index():
 
 @app.route('/api/trading-data')
 def get_trading_data():
-    """Endpoint to get trading data for dashboard"""
-    try:
-        # Zawsze używaj ML trading bota jeśli jest dostępny
-        if ml_trading_bot:
-            return jsonify(ml_trading_bot.get_dashboard_data())
-        elif trading_bot:
-            return jsonify(trading_bot.get_dashboard_data())
-        else:
-            return jsonify(trading_data.get_trading_data())
-    except Exception as e:
-        logging.error(f"Error in /api/trading-data: {e}")
-        return jsonify({'error': str(e)})
+    if trading_bot and bot_status == "running":
+        return jsonify(trading_bot.get_dashboard_data())
+    elif ml_trading_bot and bot_status == "running":
+        return jsonify(ml_trading_bot.get_dashboard_data())
+    else:
+        return jsonify(trading_data.get_trading_data())
 
 @app.route('/api/bot-status')
 def get_bot_status():
@@ -128,6 +122,7 @@ def run_bot():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
 
 
