@@ -271,28 +271,22 @@ class MLTradingBot:
     def generate_breakout_signal(self, symbol: str) -> Tuple[str, float]:
         """Generate trading signal based on breakout strategy - POPRAWIONE"""
         try:
-            self.logger.info(f"🎯 Generating signal for {symbol}...")
-            
             # First check breakout with improved logic
             is_breakout, breakout_confidence, resistance_level = self.detect_breakout_signal(symbol)
             
             if is_breakout and breakout_confidence >= 0.65:
-                self.logger.info(f"🚨 BREAKOUT SIGNAL for {symbol}: Confidence {breakout_confidence:.1%}")
                 return "BREAKOUT_LONG", breakout_confidence
             
             # Get current market data for momentum analysis
-            self.logger.info(f"📊 Getting OHLC data for {symbol}...")
             df = self.get_coingecko_ohlc(symbol, '7', 100)
             if df is None or len(df) < 50:
-                self.logger.warning(f"⚠️ Not enough data for {symbol}, returning HOLD")
+                # If no data, return neutral signal
                 return "HOLD", 0.5
-            
-            self.logger.info(f"✅ Got {len(df)} rows of data for {symbol}")
             
             # Calculate indicators
             df = self.calculate_technical_indicators(df)
             
-            # Get current values with safe defaults
+            # Get current values
             current_rsi = df['rsi'].iloc[-1] if not pd.isna(df['rsi'].iloc[-1]) else 50
             current_price = df['close'].iloc[-1]
             volume_ratio = df['volume_ratio'].iloc[-1] if not pd.isna(df['volume_ratio'].iloc[-1]) else 1
@@ -300,85 +294,48 @@ class MLTradingBot:
             momentum_1h = df['momentum_1h'].iloc[-1] if not pd.isna(df['momentum_1h'].iloc[-1]) else 0
             bb_position = df['bb_position'].iloc[-1] if not pd.isna(df['bb_position'].iloc[-1]) else 0.5
 
-            self.logger.info(f"📈 {symbol} indicators - RSI: {current_rsi:.1f}, Volume: {volume_ratio:.1f}x, "
-                           f"MACD: {macd_histogram:.4f}, Momentum: {momentum_1h:.2%}")
-
             # Calculate confidence based on multiple factors
             confidence_factors = []
             
             # RSI factor (optimal range 40-70)
             if 40 <= current_rsi <= 70:
                 rsi_factor = 0.2
-                rsi_status = "optimal"
             elif 30 <= current_rsi <= 80:
                 rsi_factor = 0.1
-                rsi_status = "good"
             else:
                 rsi_factor = 0.0
-                rsi_status = "poor"
             confidence_factors.append(rsi_factor)
             
             # Volume factor
-            if volume_ratio > 1.5:
-                volume_factor = 0.2
-                volume_status = "high"
-            elif volume_ratio > 1.2:
-                volume_factor = 0.15
-                volume_status = "good"
-            elif volume_ratio > 1.0:
-                volume_factor = 0.1
-                volume_status = "normal"
-            else:
-                volume_factor = 0.0
-                volume_status = "low"
+            volume_factor = min(volume_ratio * 0.15, 0.2)  # Max 0.2 for volume
             confidence_factors.append(volume_factor)
             
             # MACD factor
-            if macd_histogram > 0.001:
-                macd_factor = 0.2
-                macd_status = "bullish"
-            elif macd_histogram > 0:
-                macd_factor = 0.1
-                macd_status = "slightly bullish"
+            if macd_histogram > 0:
+                macd_factor = min(macd_histogram * 10, 0.2)  # Normalize MACD
             else:
-                macd_factor = 0.0
-                macd_status = "bearish"
+                macd_factor = 0
             confidence_factors.append(macd_factor)
             
             # Momentum factor
-            if momentum_1h > 0.02:
-                momentum_factor = 0.15
-                momentum_status = "strong"
-            elif momentum_1h > 0.01:
-                momentum_factor = 0.1
-                momentum_status = "positive"
-            elif momentum_1h > 0:
-                momentum_factor = 0.05
-                momentum_status = "slightly positive"
+            if momentum_1h > 0:
+                momentum_factor = min(momentum_1h * 5, 0.15)  # Normalize momentum
             else:
-                momentum_factor = 0.0
-                momentum_status = "negative"
+                momentum_factor = 0
             confidence_factors.append(momentum_factor)
             
             # Bollinger Bands factor (position in bands)
             if 0.3 <= bb_position <= 0.7:  # Not at extremes
                 bb_factor = 0.1
-                bb_status = "optimal"
-            elif 0.2 <= bb_position <= 0.8:
-                bb_factor = 0.05
-                bb_status = "good"
             else:
-                bb_factor = 0.0
-                bb_status = "extreme"
+                bb_factor = 0
             confidence_factors.append(bb_factor)
             
             # Price above SMA
             if current_price > df['sma_20'].iloc[-1]:
                 sma_factor = 0.15
-                sma_status = "above"
             else:
-                sma_factor = 0.0
-                sma_status = "below"
+                sma_factor = 0
             confidence_factors.append(sma_factor)
             
             # Calculate total confidence
@@ -393,9 +350,8 @@ class MLTradingBot:
             else:
                 signal = "HOLD"
             
-            self.logger.info(f"📊 {symbol} FINAL - Signal: {signal}, Confidence: {total_confidence:.1%}, "
-                           f"Factors: RSI({rsi_status}), Volume({volume_status}), MACD({macd_status}), "
-                           f"Momentum({momentum_status}), BB({bb_status}), SMA({sma_status})")
+            self.logger.info(f"📊 Signal for {symbol}: {signal} (Confidence: {total_confidence:.1%}, "
+                           f"RSI: {current_rsi:.1f}, Volume: {volume_ratio:.1f}x)")
             
             return signal, total_confidence
             
@@ -479,7 +435,7 @@ class MLTradingBot:
                 self.logger.info(f"⏹️ No valid signal for {symbol} (Signal: {signal}, Confidence: {confidence:.1%})")
                 return None
             
-            # Check active position limit - POPRAWIONA LINIA (usunięty dodatni nawias)
+            # Check active position limit
             active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
             if active_positions >= self.max_simultaneous_positions:
                 self.logger.info(f"⏹️ Max positions reached ({active_positions}/{self.max_simultaneous_positions})")
@@ -738,29 +694,22 @@ class MLTradingBot:
                         'strategy': position.get('strategy', 'MOMENTUM')
                     })
             
-            # Calculate confidence levels for each asset - DODAJEMY DEBUG
+            # Calculate confidence levels for each asset - POPRAWIONE
             confidence_levels = {}
-            self.logger.info("🔄 Calculating confidence levels for all assets...")
-            
             for symbol in self.priority_symbols:
                 try:
                     # Get fresh signal and confidence
-                    self.logger.info(f"🔍 Generating signal for {symbol}...")
                     signal, confidence = self.generate_breakout_signal(symbol)
                     confidence_percent = round(confidence * 100, 1)
                     confidence_levels[symbol] = confidence_percent
-                    
-                    self.logger.info(f"📊 {symbol}: Signal={signal}, Confidence={confidence_percent}%")
                     
                     if confidence > 0:
                         total_confidence += confidence
                         confidence_count += 1
                         
                 except Exception as e:
-                    self.logger.error(f"❌ Error calculating confidence for {symbol}: {e}")
+                    self.logger.error(f"Error calculating confidence for {symbol}: {e}")
                     confidence_levels[symbol] = 0
-            
-            self.logger.info(f"📈 Final confidence levels: {confidence_levels}")
             
             # Get recent trades (last 10)
             recent_trades = []
@@ -785,7 +734,7 @@ class MLTradingBot:
             # Calculate total return percentage
             total_return_pct = ((self.dashboard_data['account_value'] - 10000) / 10000) * 100
             
-            dashboard_data = {
+            return {
                 'account_summary': {
                     'total_value': round(self.dashboard_data['account_value'], 2),
                     'available_cash': round(self.dashboard_data['available_cash'], 2),
@@ -810,11 +759,6 @@ class MLTradingBot:
                 'total_unrealized_pnl': round(self.dashboard_data['unrealized_pnl'], 2),
                 'last_update': self.dashboard_data['last_update'].isoformat()
             }
-            
-            self.logger.info(f"✅ Dashboard data prepared successfully")
-            self.logger.info(f"📊 Confidence levels in response: {dashboard_data['confidence_levels']}")
-            
-            return dashboard_data
             
         except Exception as e:
             self.logger.error(f"❌ Error preparing dashboard data: {e}")
@@ -915,27 +859,3 @@ class MLTradingBot:
         """Stop breakout trading"""
         self.is_running = False
         self.logger.info("🛑 Trading bot stopped")
-
-    def get_dashboard_data_fixed(self):
-        """Fixed dashboard data with working confidence levels"""
-        try:
-            # Get regular dashboard data
-            data = self.get_dashboard_data()
-            
-            # Ensure confidence levels are properly calculated
-            confidence_levels = {}
-            for symbol in self.priority_symbols:
-                try:
-                    signal, confidence = self.generate_breakout_signal(symbol)
-                    confidence_levels[symbol] = round(confidence * 100, 1)
-                except Exception as e:
-                    self.logger.error(f"Error calculating confidence for {symbol}: {e}")
-                    confidence_levels[symbol] = 0
-            
-            # Update the confidence levels in the response
-            data['confidence_levels'] = confidence_levels
-            return data
-            
-        except Exception as e:
-            self.logger.error(f"Error in get_dashboard_data_fixed: {e}")
-            return self.get_dashboard_data()
