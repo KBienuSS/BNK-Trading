@@ -436,7 +436,7 @@ class MLTradingBot:
                 return None
             
             # Check active position limit
-            active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE'])
+            active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
             if active_positions >= self.max_simultaneous_positions:
                 self.logger.info(f"⏹️ Max positions reached ({active_positions}/{self.max_simultaneous_positions})")
                 return None
