@@ -508,72 +508,10 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- NOWY DIV Z CENAMI WSZYSTKICH KRYPTOWALUT -->
-        <div class="crypto-prices-bar">
-            <div class="crypto-prices-title">🔄 Live Crypto Prices</div>
-            <div class="crypto-prices-grid" id="crypto-prices-grid">
-                <div class="crypto-price-item crypto-btc">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">₿</span>
-                        BTC
-                    </div>
-                    <div class="crypto-price" id="price-btc">$0.0000</div>
-                    <div class="crypto-change" id="change-btc">0.00%</div>
-                </div>
-                <div class="crypto-price-item crypto-eth">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">⟠</span>
-                        ETH
-                    </div>
-                    <div class="crypto-price" id="price-eth">$0.0000</div>
-                    <div class="crypto-change" id="change-eth">0.00%</div>
-                </div>
-                <div class="crypto-price-item crypto-sol">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">◎</span>
-                        SOL
-                    </div>
-                    <div class="crypto-price" id="price-sol">$0.0000</div>
-                    <div class="crypto-change" id="change-sol">0.00%</div>
-                </div>
-                <div class="crypto-price-item crypto-bnb">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">⎈</span>
-                        BNB
-                    </div>
-                    <div class="crypto-price" id="price-bnb">$0.0000</div>
-                    <div class="crypto-change" id="change-bnb">0.00%</div>
-                </div>
-                <div class="crypto-price-item crypto-xrp">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">✕</span>
-                        XRP
-                    </div>
-                    <div class="crypto-price" id="price-xrp">$0.0000</div>
-                    <div class="crypto-change" id="change-xrp">0.00%</div>
-                </div>
-                <div class="crypto-price-item crypto-doge">
-                    <div class="crypto-symbol">
-                        <span class="crypto-icon">Ð</span>
-                        DOGE
-                    </div>
-                    <div class="crypto-price" id="price-doge">$0.0000</div>
-                    <div class="crypto-change" id="change-doge">0.00%</div>
-                </div>
-            </div>
-        </div>
-        
+    <div class="container">      
         <header>
-            <div class="logo">BNK Trading - DEEPSEEK CHAT</div>
+            <div class="logo">BNK Trading - DEEPSEEK</div>
             <div class="header-right">
-                <div class="btc-price-widget" id="btcWidget">
-                    <div class="btc-price">
-                        <span class="btc-icon">₿</span>
-                        <span id="btcPrice">Ładowanie...</span>
-                    </div>
-                    <div class="btc-change" id="btcChange"></div>
-                </div>
                 
                 <div class="controls">
                     <div class="live-indicator" id="status-indicator">LIVE</div>
@@ -632,7 +570,59 @@
                     </div>
                 </div>
             </div>
-            
+            <div class="crypto-prices-bar">
+                <div class="crypto-prices-grid" id="crypto-prices-grid">
+                    <div class="crypto-price-item crypto-btc">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">₿</span>
+                            BTC
+                        </div>
+                        <div class="crypto-price" id="price-btc">$0.0000</div>
+                        <div class="crypto-change" id="change-btc">0.00%</div>
+                    </div>
+                    <div class="crypto-price-item crypto-eth">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">⟠</span>
+                            ETH
+                        </div>
+                        <div class="crypto-price" id="price-eth">$0.0000</div>
+                        <div class="crypto-change" id="change-eth">0.00%</div>
+                    </div>
+                    <div class="crypto-price-item crypto-sol">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">◎</span>
+                            SOL
+                        </div>
+                        <div class="crypto-price" id="price-sol">$0.0000</div>
+                        <div class="crypto-change" id="change-sol">0.00%</div>
+                    </div>
+                    <div class="crypto-price-item crypto-bnb">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">⎈</span>
+                            BNB
+                        </div>
+                        <div class="crypto-price" id="price-bnb">$0.0000</div>
+                        <div class="crypto-change" id="change-bnb">0.00%</div>
+                    </div>
+                    <div class="crypto-price-item crypto-xrp">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">✕</span>
+                            XRP
+                        </div>
+                        <div class="crypto-price" id="price-xrp">$0.0000</div>
+                        <div class="crypto-change" id="change-xrp">0.00%</div>
+                    </div>
+                    <div class="crypto-price-item crypto-doge">
+                        <div class="crypto-symbol">
+                            <span class="crypto-icon">Ð</span>
+                            DOGE
+                        </div>
+                        <div class="crypto-price" id="price-doge">$0.0000</div>
+                        <div class="crypto-change" id="change-doge">0.00%</div>
+                    </div>
+                </div>
+            </div>
+                
             <!-- ACTIVE POSITIONS - FULL WIDTH -->
             <div class="card full-width">
                 <h2 class="card-title">Active Positions</h2>
