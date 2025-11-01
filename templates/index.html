@@ -865,15 +865,17 @@
                 const change = currentPrice - lastBTCPrice;
                 const changePercent = (change / lastBTCPrice) * 100;
                 
+                // USUŃ stare klasy kolorów
+                changeElement.classList.remove('positive-change', 'negative-change');
+                
                 if (change > 0) {
                     changeElement.innerHTML = `+$${change.toFixed(2)} <span class="positive-change">(+${changePercent.toFixed(2)}%)</span>`;
-                    changeElement.className = 'btc-change positive-change';
+                    changeElement.classList.add('positive-change');
                 } else if (change < 0) {
                     changeElement.innerHTML = `-$${Math.abs(change).toFixed(2)} <span class="negative-change">(${changePercent.toFixed(2)}%)</span>`;
-                    changeElement.className = 'btc-change negative-change';
+                    changeElement.classList.add('negative-change');
                 } else {
                     changeElement.textContent = 'Brak zmiany';
-                    changeElement.className = 'btc-change';
                 }
             }
         }
