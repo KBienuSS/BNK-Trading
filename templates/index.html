@@ -438,6 +438,7 @@
             transition: all 0.3s ease;
             border: 1px solid transparent;
             min-height: 70px;
+            position: relative; /* Dodane dla pozycjonowania procentów */
         }
         
         .crypto-item:hover {
@@ -486,27 +487,31 @@
         .crypto-change {
             font-size: 11px;
             font-weight: 600;
-            padding: 4px 10px;
-            border-radius: 12px;
-            min-width: 65px;
-            text-align: center;
-            flex-shrink: 0;
+            padding: 4px 8px;
+            border-radius: 8px;
+            position: absolute;
+            top: 8px;
+            right: 8px;
             white-space: nowrap;
+            z-index: 2;
         }
         
         .crypto-change.positive {
             background: rgba(76, 175, 80, 0.2);
             color: var(--profit-color);
+            border: 1px solid rgba(76, 175, 80, 0.3);
         }
         
         .crypto-change.negative {
             background: rgba(244, 67, 54, 0.2);
             color: var(--loss-color);
+            border: 1px solid rgba(244, 67, 54, 0.3);
         }
         
         .crypto-change.neutral {
             background: rgba(160, 160, 160, 0.2);
             color: #a0a0a0;
+            border: 1px solid rgba(160, 160, 160, 0.3);
         }
         
         /* Animacja świecenia dla aktywnych zmian cen */
@@ -554,8 +559,9 @@
             
             .crypto-change {
                 font-size: 10px;
-                min-width: 60px;
-                padding: 3px 8px;
+                padding: 3px 6px;
+                top: 6px;
+                right: 6px;
             }
             
             .crypto-icon {
@@ -584,7 +590,10 @@
             }
             
             .crypto-change {
-                min-width: 55px;
+                font-size: 9px;
+                padding: 2px 5px;
+                top: 5px;
+                right: 5px;
             }
         }
     </style>
