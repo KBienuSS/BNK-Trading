@@ -9,6 +9,8 @@ import logging
 from typing import Dict, List, Optional, Tuple
 import threading
 import random
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -33,9 +35,9 @@ class MLTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
-        # ML Model Components
+        # ML Model Components - POPRAWIONE IMPORTY
         self.model = None
-        self.scaler = StandardScaler()
+        self.scaler = StandardScaler()  # TERAZ DZIAŁA
         self.is_trained = False
         self.training_data = []
         self.feature_columns = []
@@ -1100,6 +1102,22 @@ def force_update():
         return jsonify({'status': 'Data updated successfully'})
     except Exception as e:
         return jsonify({'status': f'Error updating data: {str(e)}'})
+
+@app.route('/')
+def serve_dashboard():
+    """Serve the HTML dashboard"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Trading Bot Dashboard</title>
+        <meta http-equiv="refresh" content="0; url=/dashboard.html">
+    </head>
+    <body>
+        <p>Redirecting to dashboard...</p>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
     print("🚀 Starting Enhanced ML Trading Bot Server...")
