@@ -417,8 +417,17 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">BNK Trading - DEEPSEEK</div>
-            <div class="header-right">               
+            <div class="logo">BNK Trading - DEEPSEEK CHAT</div>
+            <div class="header-right">
+                <!-- DODANY DIV Z CENĄ BTC -->
+                <div class="btc-price-widget" id="btcWidget">
+                    <div class="btc-price">
+                        <span class="btc-icon">₿</span>
+                        <span id="btcPrice">Ładowanie...</span>
+                    </div>
+                    <div class="btc-change" id="btcChange"></div>
+                </div>
+                
                 <div class="controls">
                     <div class="live-indicator" id="status-indicator">LIVE</div>
                     <button class="control-btn start" onclick="startBot()">▶ Start Bot</button>
