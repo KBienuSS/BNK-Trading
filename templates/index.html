@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/x-icon" href="https://img.icons8.com/?size=100&id=RxpP4tTaUhYX&format=png&color=000000">
-    <title>BNK Trading DeepSeek</title>
+    <title>LIVE Trading Dashboard - Real-time</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -363,6 +362,27 @@
         
         .confidence-low {
             color: #f44336;
+        }
+        
+        .chart-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .chart-control-btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .chart-control-btn:hover {
+            background-color: #0d2a4d;
         }
         
         @media (max-width: 1200px) {
@@ -787,10 +807,15 @@
             <!-- ACCOUNT VALUE CHART - FULL WIDTH -->
             <div class="card full-width">
                 <h2 class="card-title">Account Value</h2>
+                <div class="chart-controls">
+                    <button class="chart-control-btn" onclick="clearChartData()">🗑️ Clear Chart</button>
+                    <button class="chart-control-btn" onclick="exportChartData()">📊 Export Data</button>
+                    <button class="chart-control-btn" onclick="loadChartData()">🔄 Reload Chart</button>
+                </div>
                 <div class="chart-container">
                     <canvas id="accountValueChart"></canvas>
                 </div>
-                <div class="last-update" id="chart-update">Chart updates every 3 seconds</div>
+                <div class="last-update" id="chart-update">Loading chart data...</div>
             </div>
             
             <!-- RECENT TRADES - FULL WIDTH -->
@@ -829,6 +854,83 @@
             values: []
         };
         
+        const initialCapital = 10000;
+        
+        // Funkcje do synchronizacji wykresu z backendem
+        async function saveChartData() {
+            try {
+                const response = await fetch('/api/save-chart-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(chartData)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    console.log('✅ Chart data saved to server');
+                }
+            } catch (error) {
+                console.error('❌ Error saving chart data:', error);
+            }
+        }
+
+        async function loadChartData() {
+            try {
+                const response = await fetch('/api/load-chart-data');
+                const result = await response.json();
+                
+                if (result.status === 'success' && result.chartData) {
+                    chartData.labels = result.chartData.labels || [];
+                    chartData.values = result.chartData.values || [];
+                    
+                    console.log('✅ Chart data loaded from server:', chartData.labels.length, 'data points');
+                    
+                    // Zaktualizuj wykres
+                    if (accountChart) {
+                        accountChart.data.labels = chartData.labels;
+                        accountChart.data.datasets[0].data = chartData.values;
+                        accountChart.data.datasets[1].data = chartData.labels.map(() => initialCapital);
+                        accountChart.update('active');
+                    }
+                    
+                    document.getElementById('chart-update').textContent = 
+                        `Chart synchronized: ${chartData.labels.length} data points loaded`;
+                }
+            } catch (error) {
+                console.error('❌ Error loading chart data:', error);
+                document.getElementById('chart-update').textContent = 'Error loading chart data';
+            }
+        }
+
+        async function clearChartData() {
+            if (confirm('Are you sure you want to clear all chart data?')) {
+                chartData.labels = [];
+                chartData.values = [];
+                
+                if (accountChart) {
+                    accountChart.data.labels = [];
+                    accountChart.data.datasets[0].data = [];
+                    accountChart.data.datasets[1].data = [];
+                    accountChart.update('active');
+                }
+                
+                await saveChartData();
+                document.getElementById('chart-update').textContent = 'Chart data cleared';
+            }
+        }
+
+        function exportChartData() {
+            const dataStr = JSON.stringify(chartData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'chart_data.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
         // Osobne lastPrice dla każdej kryptowaluty
         let lastPrices = {
             'BTCUSDT': 0,
@@ -838,8 +940,6 @@
             'XRPUSDT': 0,
             'DOGEUSDT': 0
         };
-        
-        const initialCapital = 10000;
         
         // Funkcje dla każdej kryptowaluty
         async function fetchBTCPrice() {
@@ -938,7 +1038,7 @@
             }
         }
         
-        // Funkcje display dla każdej kryptowaluty - UŻYWAJĄ classList ZAMIAST className
+        // Funkcje display dla każdej kryptowaluty
         function updateBTCPriceDisplay(currentPrice) {
             const priceElement = document.getElementById('btcPrice');
             const changeElement = document.getElementById('btcChange');
@@ -1024,7 +1124,7 @@
             }
         }
         
-        // Helper function do aktualizacji zmian - NIE UŻYWA className!
+        // Helper function do aktualizacji zmian
         function updatePriceChange(changeElement, currentPrice, lastPrice, symbol) {
             const change = currentPrice - lastPrice;
             const changePercent = (change / lastPrice) * 100;
@@ -1032,7 +1132,6 @@
             const changeText = `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
             changeElement.textContent = changeText;
             
-            // UŻYJ classList ZAMIAST className - TO JEST KLUCZOWE!
             changeElement.classList.remove('positive', 'negative', 'neutral');
             
             if (change > 0.01) {
@@ -1171,7 +1270,7 @@
             }
         }
 
-        // Pobierz dane z API - Z DODANYM LOGOWANIEM
+        // Pobierz dane z API
         async function fetchTradingData() {
             try {
                 console.log('🔄 Fetching trading data...');
@@ -1184,8 +1283,6 @@
                 }
                 
                 console.log('✅ Data received - Active positions:', data.active_positions?.length, 'Recent trades:', data.recent_trades?.length);
-                console.log('📊 Full active positions:', data.active_positions);
-                console.log('📈 Full recent trades:', data.recent_trades);
                 
                 updateDashboard(data);
             } catch (error) {
@@ -1205,10 +1302,10 @@
                 chartData.labels.push(newLabel);
                 chartData.values.push(currentTotalValue);
                 
-                // Ogranicz do ostatnich 20 punktów
-                if (chartData.labels.length > 20) {
-                    chartData.labels.shift();
-                    chartData.values.shift();
+                // Ogranicz do ostatnich 50 punktów
+                if (chartData.labels.length > 50) {
+                    chartData.labels = chartData.labels.slice(-50);
+                    chartData.values = chartData.values.slice(-50);
                 }
                 
                 // Zaktualizuj wykres
@@ -1217,9 +1314,12 @@
                 accountChart.data.datasets[1].data = chartData.labels.map(() => initialCapital);
                 accountChart.update('active');
                 
+                // ZAPISZ DANE DO BACKENDU
+                saveChartData();
+                
                 // Zaktualizuj informację
                 document.getElementById('chart-update').textContent = 
-                    `Last update: ${new Date().toLocaleTimeString()} (Account value: $${currentTotalValue.toLocaleString()})`;
+                    `Last update: ${new Date().toLocaleTimeString()} | ${chartData.labels.length} data points | Synced`;
                 
                 lastTotalValue = currentTotalValue;
             }
@@ -1236,7 +1336,6 @@
                 if (element) {
                     element.textContent = `${confidence}%`;
                     
-                    // Ustaw kolor na podstawie poziomu confidence
                     if (confidence >= 70) {
                         element.className = 'confidence-value confidence-high';
                     } else if (confidence >= 40) {
@@ -1248,18 +1347,17 @@
             });
         }
 
-        // Aktualizuj dashboard - NAPRAWIONA WERSJA
+        // Aktualizuj dashboard
         function updateDashboard(data) {
             console.log('🔄 Dashboard update:', data);
             const now = new Date().toLocaleTimeString();
             
-            // Account Summary - POPRAWIONE Z KOLORAMI
+            // Account Summary
             if (data.account_summary) {
                 document.getElementById('total-value').textContent = '$' + (data.account_summary.total_value || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 document.getElementById('available-cash').textContent = '$' + (data.account_summary.available_cash || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 document.getElementById('total-fees').textContent = '$' + (data.account_summary.total_fees || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 
-                // Net Realized - CZERWONY gdy na minusie
                 const netRealizedElem = document.getElementById('net-realized');
                 const netRealized = data.account_summary.net_realized || 0;
                 netRealizedElem.textContent = '$' + netRealized.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -1267,11 +1365,10 @@
             }
             document.getElementById('account-update').textContent = `Last update: ${now}`;
 
-            // Performance Metrics - Z TOTAL PROFIT %
+            // Performance Metrics
             if (data.performance_metrics) {
                 document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
                 
-                // Total Profit % - oblicz na podstawie kapitału początkowego
                 const totalValue = data.account_summary?.total_value || initialCapital;
                 const totalProfit = ((totalValue - initialCapital) / initialCapital) * 100;
                 const totalProfitElem = document.getElementById('total-profit');
@@ -1282,21 +1379,17 @@
                 document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
             }
 
-            // Active Positions - NAPRAWIONE
+            // Active Positions
             const positionsBody = document.getElementById('positions-body');
             positionsBody.innerHTML = '';
             
             if (data.active_positions && data.active_positions.length > 0) {
                 console.log('📊 Rendering active positions:', data.active_positions);
                 
-                // W funkcji updateDashboard - część Active Positions:
                 data.active_positions.forEach(position => {
                     const row = document.createElement('tr');
                     
-                    // Użyj current_price z API bota (już z Binance)
                     const currentPrice = position.current_price || position.entry_price;
-                    
-                    // Formatuj cenę tak samo jak wszędzie
                     const formattedCurrentPrice = formatPrice(position.symbol, currentPrice);
                     const formattedEntryPrice = formatPrice(position.symbol, position.entry_price);
                     const formattedLiquidationPrice = formatPrice(position.symbol, position.liquidation_price);
@@ -1340,7 +1433,7 @@
             updateConfidenceLevels(data.confidence_levels || {});
             document.getElementById('confidence-update').textContent = `Last update: ${now}`;
 
-            // Recent Trades - NAPRAWIONE
+            // Recent Trades
             const tradesBody = document.getElementById('trades-body');
             tradesBody.innerHTML = '';
             
@@ -1411,11 +1504,16 @@
         }
 
         // Inicjalizacja
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             console.log('🚀 Trading Dashboard - LIVE MODE');
             console.log('📍 Dashboard: http://localhost:5000');
             
+            // Najpierw załaduj dane wykresu z serwera
+            await loadChartData();
+            
+            // Potem zainicjuj wykres
             initChart();
+            
             checkBotStatus();
             fetchTradingData();
             fetchAllCryptoPrices();
