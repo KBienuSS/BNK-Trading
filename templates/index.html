@@ -1270,11 +1270,18 @@
             if (data.active_positions && data.active_positions.length > 0) {
                 console.log('📊 Rendering active positions:', data.active_positions);
                 
+                // W funkcji updateDashboard - część Active Positions:
                 data.active_positions.forEach(position => {
                     const row = document.createElement('tr');
                     
-                    // Użyj current_price jeśli istnieje, w przeciwnym razie symuluj małą zmianę
-                    const currentPrice = position.current_price || (position.entry_price * (1 + (Math.random() * 0.02 - 0.01)));
+                    // Użyj current_price z API bota (już z Binance)
+                    const currentPrice = position.current_price || position.entry_price;
+                    
+                    // Formatuj cenę tak samo jak wszędzie
+                    const formattedCurrentPrice = formatPrice(position.symbol, currentPrice);
+                    const formattedEntryPrice = formatPrice(position.symbol, position.entry_price);
+                    const formattedLiquidationPrice = formatPrice(position.symbol, position.liquidation_price);
+                    
                     const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
                     const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
                     
@@ -1282,11 +1289,11 @@
                         <td>${position.entry_time || 'N/A'}</td>
                         <td><strong>${position.symbol}</strong></td>
                         <td>${position.side || 'LONG'}</td>
-                        <td>$${(position.entry_price || 0).toFixed(4)}</td>
-                        <td>$${currentPrice.toFixed(4)}</td>
+                        <td>${formattedEntryPrice}</td>
+                        <td>${formattedCurrentPrice}</td>
                         <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
                         <td>${position.leverage || 1}x</td>
-                        <td>$${(position.liquidation_price || 0).toFixed(4)}</td>
+                        <td>${formattedLiquidationPrice}</td>
                         <td>$${(position.margin || 0).toFixed(2)}</td>
                         <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
                         <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
