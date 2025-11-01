@@ -1392,16 +1392,15 @@
             initChart();
             checkBotStatus();
             fetchTradingData();
-            fetchBTCPrice(); // Pobierz cenę BTC przy starcie
+            fetchAllCryptoPrices();
+            setInterval(fetchAllCryptoPrices, 10000);
             
             // Odświeżaj dane co 3 sekundy
             updateInterval = setInterval(() => {
                 fetchTradingData();
                 checkBotStatus();
             }, 3000);
-            
-            // Odświeżaj cenę BTC co 10 sekund
-            setInterval(fetchBTCPrice, 10000);
+
         });
 
         // Cleanup
