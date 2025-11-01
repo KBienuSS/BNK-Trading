@@ -44,7 +44,7 @@ class MLTradingBot:
         self.feature_columns = []
         
         # ZAKTUALIZOWANA STRATEGIA ALOKACJI - zgodnie z analizą z PDF
-        self.max_simultaneous_positions = 4  # Zmniejszone dla lepszego zarządzania ryzykiem
+        self.max_simultaneous_positions = 6  # Zmniejszone dla lepszego zarządzania ryzykiem
         
         # NOWA ALOKACJA OPARTA NA ANALIZIE TRANSKACJI Z PDF
         self.asset_allocation = {
@@ -74,9 +74,9 @@ class MLTradingBot:
         
         # NOWE PARAMETRY STRATEGII OPARTE NA ANALIZIE
         self.trading_hours = {
-            'start_utc': 16,    # 16:00 UTC - początek okna USA
+            'start_utc': 0,    # 16:00 UTC - początek okna USA
             'end_utc': 23,      # 23:59 UTC - koniec okna USA
-            'enabled': True     # Handel tylko w godzinach wysokiej płynności
+            'enabled': False     # Handel tylko w godzinach wysokiej płynności
         }
         
         self.long_bias = 0.95   # 95% bias na LONG (zgodnie z analizą)
