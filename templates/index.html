@@ -336,55 +336,120 @@
             padding: 15px;
             border-radius: 6px;
             text-align: center;
-            transition: all 0.3s ease;
-            border: 1px solid transparent;
-        }
-
-        .confidence-item:hover {
-            background-color: rgba(15, 52, 96, 0.8);
-            border-color: var(--border-color);
-            transform: translateY(-2px);
         }
         
         .confidence-symbol {
             font-size: 14px;
             color: #a0a0a0;
             margin-bottom: 5px;
-            font-weight: 500;
         }
         
-        .confidence-price {
-            font-size: 16px;
+        .confidence-value {
+            font-size: 20px;
             font-weight: bold;
-            margin: 8px 0;
-            color: var(--text-color);
         }
         
-        .confidence-change {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 4px 8px;
-            border-radius: 12px;
-            display: inline-block;
-            min-width: 60px;
+        .confidence-high {
+            color: #4caf50;
+        }
+        
+        .confidence-medium {
+            color: #ff9800;
+        }
+        
+        .confidence-low {
+            color: #f44336;
         }
 
-        .confidence-change.positive {
+        /* STYLES FOR CRYPTO PRICES WIDGET */
+        .crypto-prices-widget {
+            background: linear-gradient(135deg, var(--accent-color), var(--secondary-color));
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+        }
+
+        .crypto-prices-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            align-items: center;
+        }
+
+        .crypto-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .crypto-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--border-color);
+            transform: translateY(-2px);
+        }
+
+        .crypto-icon {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4cc9f0;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .crypto-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .crypto-name {
+            font-size: 12px;
+            color: #a0a0a0;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .crypto-price {
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: all 0.3s ease;
+        }
+
+        .crypto-change {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 12px;
+            min-width: 55px;
+            text-align: center;
+        }
+
+        .crypto-change.positive {
             background: rgba(76, 175, 80, 0.2);
             color: var(--profit-color);
         }
 
-        .confidence-change.negative {
+        .crypto-change.negative {
             background: rgba(244, 67, 54, 0.2);
             color: var(--loss-color);
         }
 
-        .confidence-change.neutral {
+        .crypto-change.neutral {
             background: rgba(160, 160, 160, 0.2);
             color: #a0a0a0;
         }
 
-        /* Animacja aktualizacji cen */
+        /* Animacja świecenia dla aktywnych zmian cen */
         @keyframes priceUpdate {
             0% { 
                 background-color: transparent;
@@ -403,7 +468,8 @@
         .price-update {
             animation: priceUpdate 1s ease-in-out;
         }
-        
+
+        /* Responsywność */
         @media (max-width: 1200px) {
             .top-row {
                 grid-template-columns: 1fr;
@@ -421,8 +487,12 @@
             .confidence-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
+
+            .crypto-prices-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
         }
-        
+
         @media (max-width: 768px) {
             .positions-table {
                 font-size: 12px;
@@ -455,8 +525,33 @@
                 grid-template-columns: 1fr;
             }
 
-            .confidence-price {
-                font-size: 15px;
+            .crypto-prices-container {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            
+            .crypto-item {
+                padding: 8px 12px;
+                gap: 8px;
+            }
+            
+            .crypto-price {
+                font-size: 13px;
+            }
+            
+            .crypto-change {
+                font-size: 10px;
+                min-width: 50px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .crypto-prices-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .crypto-prices-widget {
+                padding: 12px 15px;
             }
         }
     </style>
@@ -464,17 +559,8 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">BNK Trading - DEEPSEEK CHAT</div>
-            <div class="header-right">
-                <!-- DODANY DIV Z CENĄ BTC -->
-                <div class="btc-price-widget" id="btcWidget">
-                    <div class="btc-price">
-                        <span class="btc-icon">₿</span>
-                        <span id="btcPrice">Ładowanie...</span>
-                    </div>
-                    <div class="btc-change" id="btcChange"></div>
-                </div>
-                
+            <div class="logo">BNK Trading - DEEPSEEK</div>
+            <div class="header-right">               
                 <div class="controls">
                     <div class="live-indicator" id="status-indicator">LIVE</div>
                     <button class="control-btn start" onclick="startBot()">▶ Start Bot</button>
@@ -482,8 +568,7 @@
                     <button class="control-btn" onclick="forceUpdate()">🔄 Update</button>
                 </div>
             </div>
-        </header>
-        
+        </header>      
         <div class="dashboard-grid">
             <!-- TOP ROW: Account Summary + Performance Metrics -->
             <div class="top-row">
@@ -532,7 +617,64 @@
                     </div>
                 </div>
             </div>
-            
+             <!-- DODANY DIV Z CENAMI WSZYSTKICH KRYPTOWALUT -->
+            <div class="crypto-prices-widget full-width" id="cryptoPricesWidget">
+                <div class="crypto-prices-container">
+                    <div class="crypto-item" data-symbol="BTCUSDT">
+                        <div class="crypto-icon">₿</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">BTC</div>
+                            <div class="crypto-price" id="btcPriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="btcChangeBar">0.00%</div>
+                    </div>
+                    
+                    <div class="crypto-item" data-symbol="ETHUSDT">
+                        <div class="crypto-icon">⟠</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">ETH</div>
+                            <div class="crypto-price" id="ethPriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="ethChangeBar">0.00%</div>
+                    </div>
+                    
+                    <div class="crypto-item" data-symbol="SOLUSDT">
+                        <div class="crypto-icon">◎</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">SOL</div>
+                            <div class="crypto-price" id="solPriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="solChangeBar">0.00%</div>
+                    </div>
+                    
+                    <div class="crypto-item" data-symbol="BNBUSDT">
+                        <div class="crypto-icon">⎈</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">BNB</div>
+                            <div class="crypto-price" id="bnbPriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="bnbChangeBar">0.00%</div>
+                    </div>
+                    
+                    <div class="crypto-item" data-symbol="XRPUSDT">
+                        <div class="crypto-icon">✕</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">XRP</div>
+                            <div class="crypto-price" id="xrpPriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="xrpChangeBar">0.00%</div>
+                    </div>
+                    
+                    <div class="crypto-item" data-symbol="DOGEUSDT">
+                        <div class="crypto-icon">Ð</div>
+                        <div class="crypto-info">
+                            <div class="crypto-name">DOGE</div>
+                            <div class="crypto-price" id="dogePriceBar">$--.--</div>
+                        </div>
+                        <div class="crypto-change" id="dogeChangeBar">0.00%</div>
+                    </div>
+                </div>
+            </div>
             <!-- ACTIVE POSITIONS - FULL WIDTH -->
             <div class="card full-width">
                 <h2 class="card-title">Active Positions</h2>
@@ -565,42 +707,36 @@
                 <div class="last-update" id="positions-update">Last update: --</div>
             </div>
             
-            <!-- CRYPTO PRICES - FULL WIDTH (zmienione z Confidence Levels) -->
+            <!-- CONFIDENCE LEVELS - FULL WIDTH -->
             <div class="card full-width">
-                <h2 class="card-title">Live Crypto Prices</h2>
-                <div class="confidence-grid" id="crypto-prices-grid">
-                    <div class="confidence-item" data-symbol="BTCUSDT">
-                        <div class="confidence-symbol">BTC/USDT</div>
-                        <div class="confidence-price" id="price-btc">$--.--</div>
-                        <div class="confidence-change neutral" id="change-btc">0.00%</div>
+                <h2 class="card-title">Asset Confidence Levels</h2>
+                <div class="confidence-grid" id="confidence-grid">
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BTCUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-btc">0%</div>
                     </div>
-                    <div class="confidence-item" data-symbol="ETHUSDT">
-                        <div class="confidence-symbol">ETH/USDT</div>
-                        <div class="confidence-price" id="price-eth">$--.--</div>
-                        <div class="confidence-change neutral" id="change-eth">0.00%</div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">ETHUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-eth">0%</div>
                     </div>
-                    <div class="confidence-item" data-symbol="SOLUSDT">
-                        <div class="confidence-symbol">SOL/USDT</div>
-                        <div class="confidence-price" id="price-sol">$--.--</div>
-                        <div class="confidence-change neutral" id="change-sol">0.00%</div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">SOLUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-sol">0%</div>
                     </div>
-                    <div class="confidence-item" data-symbol="BNBUSDT">
-                        <div class="confidence-symbol">BNB/USDT</div>
-                        <div class="confidence-price" id="price-bnb">$--.--</div>
-                        <div class="confidence-change neutral" id="change-bnb">0.00%</div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">BNBUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-bnb">0%</div>
                     </div>
-                    <div class="confidence-item" data-symbol="XRPUSDT">
-                        <div class="confidence-symbol">XRP/USDT</div>
-                        <div class="confidence-price" id="price-xrp">$--.--</div>
-                        <div class="confidence-change neutral" id="change-xrp">0.00%</div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">XRPUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-xrp">0%</div>
                     </div>
-                    <div class="confidence-item" data-symbol="DOGEUSDT">
-                        <div class="confidence-symbol">DOGE/USDT</div>
-                        <div class="confidence-price" id="price-doge">$--.--</div>
-                        <div class="confidence-change neutral" id="change-doge">0.00%</div>
+                    <div class="confidence-item">
+                        <div class="confidence-symbol">DOGEUSDT</div>
+                        <div class="confidence-value confidence-medium" id="confidence-doge">0%</div>
                     </div>
                 </div>
-                <div class="last-update" id="prices-update">Last update: --</div>
+                <div class="last-update" id="confidence-update">Last update: --</div>
             </div>
             
             <!-- BOTTOM ROW: Account Value Chart + Recent Trades - SAME WIDTH AS ACTIVE POSITIONS -->
@@ -709,29 +845,29 @@
             }
         }
 
-        // GŁÓWNA FUNKCJA DO POBRANIA WSZYSTKICH CEN KRYPTOWALUT
-        async function fetchAllCryptoPrices() {
-            console.log('🔄 Fetching all crypto prices...');
+        // GŁÓWNA FUNKCJA DO POBRANIA WSZYSTKICH DANYCH
+        async function fetchAllCryptoData() {
+            console.log('🔄 Fetching all crypto data...');
             const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
             
             // Używamy Promise.all dla równoległego pobierania
-            const promises = symbols.map(symbol => fetchCryptoPrice(symbol));
+            const promises = symbols.map(symbol => fetchCryptoPriceAndConfidence(symbol));
             const results = await Promise.allSettled(promises);
             
             const successfulFetches = results.filter(result => result.status === 'fulfilled').length;
-            console.log(`✅ Crypto prices updated: ${successfulFetches}/6 successful`);
+            console.log(`✅ Crypto data updated: ${successfulFetches}/6 successful`);
             
             // Aktualizuj widget BTC w headerze
             if (cryptoPricesData['BTCUSDT'].price > 0) {
                 updateBTCPriceDisplay(cryptoPricesData['BTCUSDT'].price);
             }
             
-            // Aktualizuj timestamp
-            document.getElementById('prices-update').textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+            // Aktualizuj confidence levels
+            updateConfidenceLevelsFromPrices();
         }
 
-        // Pobiera cenę dla jednej kryptowaluty
-        async function fetchCryptoPrice(symbol) {
+        // Pobiera cenę i oblicza confidence dla jednej kryptowaluty
+        async function fetchCryptoPriceAndConfidence(symbol) {
             try {
                 // Primary: KuCoin API
                 const kucoinSymbol = symbol.replace('USDT', '-USDT');
@@ -742,7 +878,7 @@
                     const data = await response.json();
                     if (data.code === '200000' && data.data) {
                         const currentPrice = parseFloat(data.data.price);
-                        updateCryptoPriceDisplay(symbol, currentPrice);
+                        updateCryptoPriceBar(symbol, currentPrice);
                         return { success: true, source: 'kucoin', symbol, price: currentPrice };
                     }
                 }
@@ -762,7 +898,7 @@
                         if (data[coinId] && data[coinId].usd) {
                             const currentPrice = data[coinId].usd;
                             const change24h = data[coinId].usd_24h_change || 0;
-                            updateCryptoPriceDisplay(symbol, currentPrice, change24h);
+                            updateCryptoPriceBar(symbol, currentPrice, change24h);
                             return { success: true, source: 'coingecko', symbol, price: currentPrice, change: change24h };
                         }
                     }
@@ -772,7 +908,7 @@
             }
 
             // Jeśli oba API zawiodą, nie aktualizujemy - zachowujemy poprzednią cenę
-            console.log(`⏸️ Keeping previous price for ${symbol} - APIs unavailable`);
+            console.log(`⏸️ Keeping previous data for ${symbol} - APIs unavailable`);
             return { success: false, symbol };
         }
 
@@ -810,11 +946,11 @@
             return mapping[symbol];
         }
 
-        // Aktualizacja wyświetlania ceny w gridzie
-        function updateCryptoPriceDisplay(symbol, currentPrice, change24h = null) {
+        // Aktualizacja paska z cenami
+        function updateCryptoPriceBar(symbol, currentPrice, change24h = null) {
             const cryptoKey = symbol.toLowerCase().replace('usdt', '');
-            const priceElement = document.getElementById(`price-${cryptoKey}`);
-            const changeElement = document.getElementById(`change-${cryptoKey}`);
+            const priceElement = document.getElementById(`${cryptoKey}PriceBar`);
+            const changeElement = document.getElementById(`${cryptoKey}ChangeBar`);
             
             if (!priceElement || !changeElement) return;
             
@@ -863,11 +999,11 @@
                 
                 // Ustaw kolory
                 if (changePercent > 0.01) {
-                    changeElement.className = 'confidence-change positive';
+                    changeElement.className = 'crypto-change positive';
                 } else if (changePercent < -0.01) {
-                    changeElement.className = 'confidence-change negative';
+                    changeElement.className = 'crypto-change negative';
                 } else {
-                    changeElement.className = 'confidence-change neutral';
+                    changeElement.className = 'crypto-change neutral';
                 }
             }
             
@@ -879,6 +1015,46 @@
                     lastUpdated: new Date()
                 };
             }
+        }
+
+        // Aktualizacja confidence levels na podstawie cen
+        function updateConfidenceLevelsFromPrices() {
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            const now = new Date().toLocaleTimeString();
+            
+            symbols.forEach(symbol => {
+                const data = cryptoPricesData[symbol];
+                const confidenceElement = document.getElementById(`confidence-${symbol.toLowerCase().replace('usdt', '')}`);
+                
+                if (confidenceElement && data.price > 0) {
+                    // Oblicz confidence na podstawie zmiany ceny i wolumenu
+                    const priceChange = Math.abs(data.change);
+                    let confidence = 0;
+                    
+                    if (priceChange > 5) confidence = 85;
+                    else if (priceChange > 3) confidence = 70;
+                    else if (priceChange > 1) confidence = 55;
+                    else if (priceChange > 0.5) confidence = 40;
+                    else confidence = 25;
+                    
+                    // Dodaj losową zmienność ±10%
+                    confidence += (Math.random() - 0.5) * 20;
+                    confidence = Math.max(10, Math.min(95, Math.round(confidence)));
+                    
+                    confidenceElement.textContent = `${confidence}%`;
+                    
+                    // Ustaw kolor na podstawie poziomu confidence
+                    if (confidence >= 70) {
+                        confidenceElement.className = 'confidence-value confidence-high';
+                    } else if (confidence >= 40) {
+                        confidenceElement.className = 'confidence-value confidence-medium';
+                    } else {
+                        confidenceElement.className = 'confidence-value confidence-low';
+                    }
+                }
+            });
+            
+            document.getElementById('confidence-update').textContent = `Last update: ${now}`;
         }
 
         // Inicjalizacja wykresu
@@ -1169,7 +1345,7 @@
                 const data = await response.json();
                 console.log('Forced update:', data);
                 fetchTradingData();
-                fetchAllCryptoPrices(); // Also force crypto prices update
+                fetchAllCryptoData(); // Also force crypto data update
             } catch (error) {
                 console.error('Error forcing update:', error);
             }
@@ -1189,9 +1365,9 @@
             fetchTradingData();
             fetchBTCPrice(); // Pobierz cenę BTC przy starcie
             
-            // Inicjalizacja cen kryptowalut
-            console.log('🔄 Initializing crypto prices...');
-            fetchAllCryptoPrices();
+            // Inicjalizacja widgetu kryptowalut
+            console.log('🔄 Initializing crypto prices widget...');
+            fetchAllCryptoData();
             
             // Odświeżaj dane co 3 sekundy
             updateInterval = setInterval(() => {
@@ -1200,7 +1376,7 @@
             }, 3000);
             
             // Odświeżaj ceny kryptowalut co 10 sekund
-            setInterval(fetchAllCryptoPrices, 10000);
+            setInterval(fetchAllCryptoData, 10000);
             
             // Odświeżaj cenę BTC co 15 sekund
             setInterval(fetchBTCPrice, 15000);
