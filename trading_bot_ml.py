@@ -212,11 +212,23 @@ class MLTradingBot:
         return self.get_realistic_simulation(symbol, limit)
 
     def get_current_price(self, symbol: str):
-        """Get LIVE current price from working APIs"""
+        """Get LIVE current price from Binance API with unified precision"""
         try:
-            import requests
+            # PRIMARY: Binance API for consistent pricing
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+            response = requests.get(url, timeout=10)
             
-            # Primary: KuCoin API - very reliable
+            if response.status_code == 200:
+                data = response.json()
+                current_price = float(data['price'])
+                self.logger.info(f"✅ Binance LIVE Price for {symbol}: ${current_price}")
+                return current_price
+                
+        except Exception as e:
+            self.logger.warning(f"Binance price failed for {symbol}: {e}")
+        
+        try:
+            # Fallback 1: KuCoin
             kucoin_symbol = symbol.replace('USDT', '-USDT')
             url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_symbol}"
             response = requests.get(url, timeout=10)
@@ -225,14 +237,14 @@ class MLTradingBot:
                 data = response.json()
                 if data.get('code') == '200000' and data.get('data'):
                     price = float(data['data']['price'])
-                    self.logger.info(f"✅ KuCoin LIVE Price for {symbol}: ${price:.2f}")
+                    self.logger.info(f"✅ KuCoin Price for {symbol}: ${price}")
                     return price
                     
         except Exception as e:
             self.logger.warning(f"KuCoin price failed: {e}")
         
         try:
-            # Fallback: CoinGecko - also very reliable
+            # Fallback 2: CoinGecko
             coin_id = self.symbol_to_coingecko(symbol)
             if coin_id:
                 url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
@@ -242,13 +254,13 @@ class MLTradingBot:
                     data = response.json()
                     if coin_id in data and 'usd' in data[coin_id]:
                         price = data[coin_id]['usd']
-                        self.logger.info(f"✅ CoinGecko LIVE Price for {symbol}: ${price:.2f}")
+                        self.logger.info(f"✅ CoinGecko Price for {symbol}: ${price}")
                         return float(price)
                         
         except Exception as e:
             self.logger.warning(f"CoinGecko price failed: {e}")
         
-        # Final fallback: Realistic market price
+        # Final fallback: Realistic simulation based on current market
         return self.get_realistic_market_price(symbol)
 
     def get_realistic_simulation(self, symbol: str, limit: int = 100):
