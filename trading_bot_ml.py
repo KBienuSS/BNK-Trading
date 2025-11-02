@@ -35,9 +35,9 @@ class MLTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
-        # ML Model Components - POPRAWIONE IMPORTY
+        # ML Model Components
         self.model = None
-        self.scaler = StandardScaler()  # TERAZ DZIAŁA
+        self.scaler = StandardScaler()
         self.is_trained = False
         self.training_data = []
         self.feature_columns = []
@@ -115,8 +115,9 @@ class MLTradingBot:
         # Initialize ML model
         self.initialize_ml_model()
         
-        self.logger.info("🧠 ENHANCED ML TRADING BOT - PDF OPTIMIZED STRATEGY")
-        self.logger.info(f"💰 Initial capital: ${initial_capital}")
+        self.logger.info("🧠 ENHANCED ML TRADING BOT - REALISTIC TP LEVELS")
+        self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
+        self.logger.info("🎯 Target: 20-30% margin returns (2-3% price moves)")
 
     def initialize_ml_model(self):
         """Initialize ML model with Random Forest"""
@@ -365,37 +366,44 @@ class MLTradingBot:
     def calculate_technical_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate comprehensive technical indicators for ML features"""
         try:
+            # Price-based indicators
             df['sma_20'] = df['close'].rolling(20).mean()
             df['sma_50'] = df['close'].rolling(50).mean()
             df['ema_12'] = df['close'].ewm(span=12).mean()
             df['ema_26'] = df['close'].ewm(span=26).mean()
             
+            # RSI
             delta = df['close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
             rs = gain / loss
             df['rsi'] = 100 - (100 / (1 + rs))
             
+            # MACD
             macd = df['ema_12'] - df['ema_26']
             df['macd'] = macd
             df['macd_signal'] = macd.ewm(span=9).mean()
             df['macd_histogram'] = df['macd'] - df['macd_signal']
             
+            # Bollinger Bands
             df['bb_middle'] = df['close'].rolling(20).mean()
             bb_std = df['close'].rolling(20).std()
             df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
             df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
             df['bb_position'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
             
+            # Volume indicators
             df['volume_sma'] = df['volume'].rolling(20).mean()
             df['volume_ratio'] = df['volume'] / df['volume_sma']
             
+            # Support/Resistance
             df['resistance'] = df['high'].rolling(20).max()
             df['support'] = df['low'].rolling(20).min()
             df['distance_to_resistance'] = (df['resistance'] - df['close']) / df['close']
             df['distance_to_support'] = (df['close'] - df['support']) / df['close']
             
-            df['momentum_1h'] = df['close'].pct_change(20)
+            # Momentum
+            df['momentum_1h'] = df['close'].pct_change(20)  # 1 hour momentum
             df['volatility'] = df['close'].rolling(20).std() / df['close'].rolling(20).mean()
             
             return df
@@ -407,11 +415,13 @@ class MLTradingBot:
     def generate_breakout_signal(self, symbol: str) -> Tuple[str, float]:
         """Generuje sygnał oparty na ulepszonej strategii breakout"""
         try:
+            # Najpierw sprawdź breakout
             is_breakout, breakout_confidence, resistance_level = self.detect_breakout_signal(symbol)
             
             if is_breakout and breakout_confidence >= 0.65:
                 return "BREAKOUT_LONG", breakout_confidence
             
+            # Fallback do tradycyjnej strategii ML
             df = self.get_binance_klines(symbol, '3m', 100)
             if df is None or len(df) < 50:
                 return "HOLD", 0.5
@@ -427,24 +437,25 @@ class MLTradingBot:
             confidence = 0.0
             signal = "HOLD"
             
+            # Warunki dla momentum trading
             conditions = 0
-            if 40 <= current_rsi <= 70:
+            if 40 <= current_rsi <= 70:  # Optymalny zakres RSI dla breakout
                 conditions += 1
                 confidence += 0.15
             
-            if volume_ratio > 1.3:
+            if volume_ratio > 1.3:  # Wysoki volume
                 conditions += 1
                 confidence += 0.20
             
-            if macd_histogram > 0:
+            if macd_histogram > 0:  # Pozytywny momentum MACD
                 conditions += 1
                 confidence += 0.20
             
-            if momentum_1h > 0.01:
+            if momentum_1h > 0.01:  # Pozytywny momentum 1h
                 conditions += 1
                 confidence += 0.15
             
-            if current_price > df['sma_20'].iloc[-1]:
+            if current_price > df['sma_20'].iloc[-1]:  # Cena powyżej SMA20
                 conditions += 1
                 confidence += 0.15
             
@@ -461,11 +472,18 @@ class MLTradingBot:
     def calculate_dynamic_position_size(self, symbol: str, price: float, confidence: float, is_breakout: bool):
         """Dynamiczne obliczanie wielkości pozycji z pyramidingiem"""
         try:
+            # Bazowa alokacja
             base_allocation = self.asset_allocation.get(symbol, 0.15)
+            
+            # Modyfikator confidence
             confidence_multiplier = 0.6 + (confidence * 0.4)
+            
+            # Bonus dla breakout
             breakout_bonus = 1.2 if is_breakout else 1.0
             
+            # Oblicz wartość pozycji z pyramidingiem
             if self.pyramiding_enabled and self.stats['total_pnl'] > 0:
+                # Reinwestuj 60% zysków
                 reinvestment = min(self.stats['total_pnl'] * 0.6, self.virtual_capital * 0.3)
                 effective_capital = self.virtual_capital + reinvestment
             else:
@@ -474,9 +492,11 @@ class MLTradingBot:
             position_value = (effective_capital * base_allocation * 
                            confidence_multiplier * breakout_bonus)
             
+            # Limit maksymalnej pozycji
             max_position_value = effective_capital * self.max_position_value
             position_value = min(position_value, max_position_value)
             
+            # Użyj historycznej wielkości jako referencji
             historical_quantity = self.position_sizes.get(symbol, position_value / price)
             final_quantity = min(position_value / price, historical_quantity * 1.5)
             
@@ -500,6 +520,7 @@ class MLTradingBot:
             if total_margin == 0:
                 return 0
             
+            # Oblicz wskaźnik Herfindahla (miernik koncentracji)
             concentration_index = sum((p['margin'] / total_margin) ** 2 for p in active_positions)
             diversity = 1 - concentration_index
             
@@ -523,14 +544,17 @@ class MLTradingBot:
             entry_price = position['entry_price']
             take_profit_price = position['exit_plan']['take_profit']
             
+            # WARUNK 1: Zamknięcie poniżej Stop Loss
             if last_candle['close'] <= stop_loss_price:
                 self.logger.info(f"🔴 3min Candle CLOSE below SL: {last_candle['close']:.4f} <= {stop_loss_price:.4f}")
                 return True
             
-            if last_candle['close'] >= take_profit_price * 0.95:
+            # WARUNK 2: Zamknięcie powyżej Take Profit (częściowe zabezpieczenie zysku)
+            if last_candle['close'] >= take_profit_price * 0.95:  # 95% TP
                 self.logger.info(f"🟢 3min Candle near TP: {last_candle['close']:.4f} >= {take_profit_price * 0.95:.4f}")
                 return True
             
+            # WARUNK 3: Duża bearish świeca po breakout
             candle_size = abs(last_candle['close'] - last_candle['open'])
             avg_candle_size = abs(df_3min['close'] - df_3min['open']).tail(10).mean()
             
@@ -547,16 +571,55 @@ class MLTradingBot:
             self.logger.error(f"❌ Error in 3min candle analysis for {symbol}: {e}")
             return False
 
-    def calculate_breakout_exit_levels(self, entry_price: float, resistance_level: float) -> Dict:
-        """Oblicza poziomy wyjścia dla strategii breakout"""
-        take_profit = entry_price * 1.08
-        stop_loss = resistance_level * 0.98
-        invalidation = entry_price * 0.96
+    def calculate_breakout_exit_levels(self, entry_price: float, resistance_level: float, symbol: str) -> Dict:
+        """POPRAWIONE: REALISTYCZNE POZIOMY TP/SL PRZY DŹWIGNI"""
+        # DOCELOWY ZYSK: 20-30% na marży (2-3% ruchu ceny przy 10x)
+        tp_multipliers = {
+            'BTCUSDT': 1.022,   # 2.2% TP = 22% zysku przy 10x
+            'ETHUSDT': 1.025,   # 2.5% TP = 25% zysku
+            'SOLUSDT': 1.028,   # 2.8% TP = 28% zysku  
+            'XRPUSDT': 1.026,   # 2.6% TP = 26% zysku
+            'BNBUSDT': 1.024,   # 2.4% TP = 24% zysku
+        }
+        tp_multiplier = tp_multipliers.get(symbol, 1.025)
+        
+        # STOP LOSS: 10-15% straty na marży (1-1.5% ruchu ceny)
+        sl_multipliers = {
+            'BTCUSDT': 0.988,   # 1.2% SL = 12% straty przy 10x
+            'ETHUSDT': 0.987,   # 1.3% SL = 13% straty
+            'SOLUSDT': 0.985,   # 1.5% SL = 15% straty
+            'XRPUSDT': 0.986,   # 1.4% SL = 14% straty
+            'BNBUSDT': 0.987,   # 1.3% SL = 13% straty
+        }
+        sl_multiplier = sl_multipliers.get(symbol, 0.987)
+        
+        take_profit = entry_price * tp_multiplier
+        stop_loss = entry_price * sl_multiplier
+        
+        self.logger.info(f"🎯 REALISTIC TP/SL for {symbol}: TP={tp_multiplier-1:.2%} ({(tp_multiplier-1)*self.leverage:.0f}% margin) | SL={1-sl_multiplier:.2%} ({(1-sl_multiplier)*self.leverage:.0f}% margin)")
         
         return {
             'take_profit': take_profit,
             'stop_loss': stop_loss,
-            'invalidation': invalidation
+            'invalidation': entry_price * 0.98
+        }
+
+    def calculate_momentum_exit_levels(self, entry_price: float, symbol: str) -> Dict:
+        """POPRAWIONE: KRÓTSZE TP DLA MOMENTUM"""
+        # DOCELOWY ZYSK: 15-20% na marży (1.5-2% ruchu ceny)
+        tp_multipliers = {
+            'BTCUSDT': 1.018,   # 1.8% TP = 18% zysku
+            'ETHUSDT': 1.020,   # 2.0% TP = 20% zysku
+            'SOLUSDT': 1.022,   # 2.2% TP = 22% zysku
+            'XRPUSDT': 1.021,   # 2.1% TP = 21% zysku
+            'BNBUSDT': 1.019,   # 1.9% TP = 19% zysku
+        }
+        tp_multiplier = tp_multipliers.get(symbol, 1.020)
+        
+        return {
+            'take_profit': entry_price * tp_multiplier,
+            'stop_loss': entry_price * 0.985,    # 1.5% SL
+            'invalidation': entry_price * 0.975  # 2.5% invalidation
         }
 
     def generate_macro_signal(self):
@@ -620,15 +683,12 @@ class MLTradingBot:
             self.logger.warning(f"💰 Insufficient balance for {symbol}")
             return None
         
+        # UŻYJ POPRAWIONYCH POZIOMÓW WYJŚCIA
         if is_breakout:
             _, _, resistance_level = self.detect_breakout_signal(symbol)
-            exit_levels = self.calculate_breakout_exit_levels(current_price, resistance_level)
+            exit_levels = self.calculate_breakout_exit_levels(current_price, resistance_level, symbol)
         else:
-            exit_levels = {
-                'take_profit': current_price * 1.10,
-                'stop_loss': current_price * 0.95,
-                'invalidation': current_price * 0.93
-            }
+            exit_levels = self.calculate_momentum_exit_levels(current_price, symbol)
         
         liquidation_price = current_price * (1 - 0.9 / self.leverage)
         
@@ -654,14 +714,16 @@ class MLTradingBot:
         self.positions[position_id] = position
         self.virtual_balance -= margin_required
         
-        if is_breakout:
-            self.stats['breakout_trades'] += 1
-            self.logger.info(f"🎯 BREAKOUT OPEN: {quantity:.4f} {symbol} @ ${current_price:.2f}")
-        else:
-            self.logger.info(f"📈 MOMENTUM OPEN: {quantity:.4f} {symbol} @ ${current_price:.2f}")
+        # LOGOWANIE Z REALISTYCZNYMI POZIOMAMI
+        tp_percent = (exit_levels['take_profit'] - current_price) / current_price * 100
+        sl_percent = (current_price - exit_levels['stop_loss']) / current_price * 100
+        tp_margin = tp_percent * self.leverage
+        sl_margin = sl_percent * self.leverage
         
-        self.logger.info(f"   📊 TP: ${exit_levels['take_profit']:.2f} | SL: ${exit_levels['stop_loss']:.2f}")
-        self.logger.info(f"   💰 Position: ${position_value:.2f} ({self.asset_allocation[symbol]*100:.0f}% allocation)")
+        self.logger.info(f"🎯 {'BREAKOUT' if is_breakout else 'MOMENTUM'} OPEN: {symbol} @ ${current_price:.2f}")
+        self.logger.info(f"   📊 TP: ${exit_levels['take_profit']:.2f} ({tp_percent:.1f}% = {tp_margin:.0f}% margin)")
+        self.logger.info(f"   🛑 SL: ${exit_levels['stop_loss']:.2f} ({sl_percent:.1f}% = {sl_margin:.0f}% margin)")
+        self.logger.info(f"   💰 Position: ${position_value:.2f} | Margin: ${margin_required:.2f}")
         
         return position_id
 
@@ -718,12 +780,19 @@ class MLTradingBot:
             
             if current_price >= position['exit_plan']['take_profit']:
                 exit_reason = "TAKE_PROFIT"
+                # Oblicz rzeczywisty zysk
+                pnl_pct = (current_price - position['entry_price']) / position['entry_price']
+                actual_margin_return = pnl_pct * self.leverage * 100
+                self.logger.info(f"🟢 TP HIT: {position['symbol']} - {actual_margin_return:.1f}% margin return")
             
             elif self.should_close_based_on_3min_candle(position['symbol'], position):
                 exit_reason = "STOP_LOSS_3MIN"
             
             elif current_price <= position['exit_plan']['stop_loss']:
                 exit_reason = "STOP_LOSS_CLASSIC"
+                pnl_pct = (current_price - position['entry_price']) / position['entry_price']
+                actual_margin_return = pnl_pct * self.leverage * 100
+                self.logger.info(f"🔴 SL HIT: {position['symbol']} - {actual_margin_return:.1f}% margin return")
             
             elif current_price <= position['exit_plan']['invalidation']:
                 exit_reason = "INVALIDATION"
@@ -787,24 +856,33 @@ class MLTradingBot:
         
         pnl_color = "🟢" if realized_pnl_after_fee > 0 else "🔴"
         strategy_icon = "🎯" if position.get('strategy') == 'BREAKOUT' else "📈"
-        self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} - Reason: {exit_reason}")
+        margin_return = pnl_pct * self.leverage * 100
+        self.logger.info(f"{pnl_color} {strategy_icon} CLOSE: {position['symbol']} - P&L: ${realized_pnl_after_fee:+.2f} ({margin_return:+.1f}% margin) - Reason: {exit_reason}")
 
     def get_dashboard_data(self):
-        """Prepare dashboard data"""
+        """Prepare dashboard data - ZAKTUALIZOWANA WERSJA Z TP/SL INFO"""
         active_positions = []
         total_confidence = 0
         confidence_count = 0
         
+        # Pobierz aktualne ceny dla wszystkich aktywnych pozycji
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
                 current_price = self.get_current_price(position['symbol'])
                 
+                # Oblicz unrealized PnL
                 if position['side'] == 'LONG':
                     pnl_pct = (current_price - position['entry_price']) / position['entry_price']
                     unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
                 else:
                     pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
                     unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
+                
+                # Oblicz odległości do TP/SL
+                tp_distance_pct = (position['exit_plan']['take_profit'] - current_price) / current_price * 100
+                sl_distance_pct = (current_price - position['exit_plan']['stop_loss']) / current_price * 100
+                tp_distance_margin = tp_distance_pct * position['leverage']
+                sl_distance_margin = sl_distance_pct * position['leverage']
                 
                 active_positions.append({
                     'position_id': position_id,
@@ -819,9 +897,15 @@ class MLTradingBot:
                     'margin': position['margin'],
                     'unrealized_pnl': unrealized_pnl,
                     'confidence': position.get('confidence', 0),
-                    'strategy': position.get('strategy', 'MOMENTUM')
+                    'strategy': position.get('strategy', 'MOMENTUM'),
+                    'exit_plan': position['exit_plan'],
+                    'tp_distance_pct': round(tp_distance_pct, 2),
+                    'sl_distance_pct': round(sl_distance_pct, 2),
+                    'tp_distance_margin': round(tp_distance_margin, 1),
+                    'sl_distance_margin': round(sl_distance_margin, 1)
                 })
         
+        # CONFIDENCE LEVELS DLA KAŻDEGO ASSETU
         confidence_levels = {}
         for symbol in self.priority_symbols:
             try:
@@ -829,6 +913,7 @@ class MLTradingBot:
                 confidence_percent = round(confidence * 100, 1)
                 confidence_levels[symbol] = confidence_percent
                 
+                # Do obliczenia średniej confidence
                 if confidence > 0:
                     total_confidence += confidence
                     confidence_count += 1
@@ -839,6 +924,7 @@ class MLTradingBot:
                 self.logger.error(f"❌ Error calculating confidence for {symbol}: {e}")
                 confidence_levels[symbol] = 0
         
+        # Oblicz średnią confidence
         avg_confidence = round((total_confidence / confidence_count * 100), 1) if confidence_count > 0 else 0
         
         recent_trades = []
@@ -859,8 +945,10 @@ class MLTradingBot:
         total_trades = self.stats['total_trades']
         win_rate = (self.stats['winning_trades'] / total_trades * 100) if total_trades > 0 else 0
         
+        # Oblicz całkowity zwrot
         total_return_pct = ((self.dashboard_data['account_value'] - 10000) / 10000) * 100
         
+        # Sprawdź czy jesteśmy w godzinach handlu
         trading_window_active = self.is_trading_hours()
         current_hour_utc = datetime.utcnow().hour
         
@@ -905,8 +993,9 @@ class MLTradingBot:
         }
 
     def run_enhanced_breakout_strategy(self):
-        """Ulepszona główna pętla strategii"""
-        self.logger.info("🚀 ENHANCED BREAKOUT STRATEGY - BASED ON PDF ANALYSIS")
+        """Ulepszona główna pętla strategii z realistycznymi TP"""
+        self.logger.info("🚀 ENHANCED BREAKOUT STRATEGY - REALISTIC TP LEVELS")
+        self.logger.info("🎯 Target: 20-30% margin returns (2-3% price moves)")
         
         iteration = 0
         while self.is_running:
@@ -917,22 +1006,27 @@ class MLTradingBot:
                 
                 self.logger.info(f"\n🔄 Enhanced Iteration #{iteration} | UTC: {current_hour_utc:02d}:00")
                 
+                # Sprawdź czy jesteśmy w godzinach handlu
                 if not self.is_trading_hours():
                     self.logger.info("⏸️ Outside trading hours (16:00-23:59 UTC) - Waiting...")
-                    time.sleep(300)
+                    time.sleep(300)  # 5 minut przerwy
                     continue
                 
+                # 1. Aktualizuj P&L
                 self.update_positions_pnl()
                 
+                # 2. Sprawdź warunki wyjścia
                 positions_to_close = self.check_exit_conditions()
                 for position_id, exit_reason, exit_price in positions_to_close:
                     self.close_position(position_id, exit_reason, exit_price)
                 
+                # 3. SPRAWDŹ SYGNAŁ MAKRO (klastry transakcji)
                 macro_signal, strong_signals = self.generate_macro_signal()
                 if macro_signal:
                     self.logger.info("🎯 EXECUTING MACRO CLUSTER STRATEGY")
                     self.open_macro_positions(strong_signals)
                 else:
+                    # 4. Standardowe sprawdzanie sygnałów per asset
                     active_symbols = [p['symbol'] for p in self.positions.values() 
                                     if p['status'] == 'ACTIVE']
                     active_count = len(active_symbols)
@@ -940,6 +1034,7 @@ class MLTradingBot:
                     if active_count < self.max_simultaneous_positions:
                         for symbol in self.priority_symbols:
                             if symbol not in active_symbols:
+                                # Sprawdź bias LONG
                                 if not self.should_enter_long():
                                     self.logger.info(f"⏹️ Skipping {symbol} due to long bias")
                                     continue
@@ -949,7 +1044,7 @@ class MLTradingBot:
                                 entry_conditions = (
                                     signal in ["BREAKOUT_LONG", "LONG"] and 
                                     confidence >= 0.65 and
-                                    self.virtual_balance > 100
+                                    self.virtual_balance > 100  # Minimalny margin
                                 )
                                 
                                 if entry_conditions:
@@ -958,13 +1053,16 @@ class MLTradingBot:
                                     
                                     position_id = self.open_breakout_position(symbol)
                                     if position_id:
-                                        time.sleep(1)
+                                        time.sleep(1)  # Opóźnienie między pozycjami
                 
+                # 5. Loguj status
                 portfolio_value = self.dashboard_data['account_value']
                 active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
                 
                 self.logger.info(f"📊 Portfolio: ${portfolio_value:.2f} | Active: {active_count}/{self.max_simultaneous_positions}")
+                self.logger.info(f"🕒 Trading Window: {self.trading_hours['start_utc']:02d}:00-{self.trading_hours['end_utc']:02d}:59 UTC")
                 
+                # 6. Krótszy interwał w godzinach handlu
                 wait_time = 30 if self.is_trading_hours() else 60
                 for i in range(wait_time):
                     if not self.is_running:
@@ -998,75 +1096,103 @@ chart_data_storage = {
     'values': []
 }
 
+# Ładuj dane z pliku przy starcie
+def load_chart_data_from_file():
+    try:
+        if os.path.exists('chart_data.json'):
+            with open('chart_data.json', 'r') as f:
+                data = json.load(f)
+                chart_data_storage.update(data)
+                print(f"✅ Loaded chart data: {len(data.get('labels', []))} points")
+        else:
+            print("ℹ️ No existing chart data file found, starting fresh")
+    except Exception as e:
+        print(f"❌ Error loading chart data: {e}")
+
+# Wywołaj przy starcie
+load_chart_data_from_file()
+
 @app.route('/api/save-chart-data', methods=['POST'])
 def save_chart_data():
     """Zapisuje dane wykresu do pamięci bota"""
     try:
         data = request.get_json()
-        chart_data_storage['labels'] = data.get('labels', [])
-        chart_data_storage['values'] = data.get('values', [])
-        
-        # Save to file for persistence
-        with open('chart_data.json', 'w') as f:
-            json.dump(chart_data_storage, f)
+        if data and 'labels' in data and 'values' in data:
+            chart_data_storage['labels'] = data['labels']
+            chart_data_storage['values'] = data['values']
             
-        return jsonify({'status': 'success', 'message': 'Chart data saved'})
+            # Zapis do pliku
+            with open('chart_data.json', 'w') as f:
+                json.dump(chart_data_storage, f, indent=2)
+            
+            print(f"✅ Chart data saved: {len(data['labels'])} labels, {len(data['values'])} values")
+            return jsonify({'status': 'success', 'message': f'Chart data saved: {len(data["labels"])} points'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Invalid data format'})
     except Exception as e:
+        print(f"❌ Error saving chart data: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/api/load-chart-data', methods=['GET'])
 def load_chart_data():
     """Ładuje dane wykresu z pamięci bota"""
     try:
-        # Try to load from file first
-        try:
-            with open('chart_data.json', 'r') as f:
-                file_data = json.load(f)
-                chart_data_storage.update(file_data)
-        except:
-            pass
-            
+        # Zawsze ładuj z pliku dla aktualnych danych
+        load_chart_data_from_file()
+        
+        print(f"📊 Returning chart data: {len(chart_data_storage['labels'])} points")
         return jsonify({
             'status': 'success', 
             'chartData': chart_data_storage
         })
     except Exception as e:
+        print(f"❌ Error loading chart data: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/api/trading-data', methods=['GET'])
 def get_trading_data():
-    """Existing endpoint - teraz z automatycznym zapisem danych wykresu"""
+    """Existing endpoint - teraz z AUTOMATYCZNYM zapisem danych wykresu"""
     try:
         dashboard_data = ml_trading_bot.get_dashboard_data()
         
-        # AUTO-SAVE CHART DATA when account value changes
+        # AUTO-SAVE CHART DATA - POPRAWIONE: zawsze zapisuj przy każdej aktualizacji
         current_value = dashboard_data['account_summary']['total_value']
-        if chart_data_storage['values']:
-            last_value = chart_data_storage['values'][-1]
-            if abs(current_value - last_value) > 0.01:
-                chart_data_storage['labels'].append(datetime.now().strftime('%H:%M:%S'))
-                chart_data_storage['values'].append(current_value)
-                
-                # Keep only last 50 points
-                if len(chart_data_storage['labels']) > 50:
-                    chart_data_storage['labels'] = chart_data_storage['labels'][-50:]
-                    chart_data_storage['values'] = chart_data_storage['values'][-50:]
-                
-                # Auto-save to file
-                with open('chart_data.json', 'w') as f:
-                    json.dump(chart_data_storage, f)
+        current_time = datetime.now().strftime('%H:%M:%S')
+        
+        # Sprawdź czy warto dodać nowy punkt (różnica > 1$ lub pierwszy punkt)
+        should_add_point = False
+        if not chart_data_storage['values']:
+            should_add_point = True  # Pierwszy punkt
         else:
-            # Initialize with current value
-            chart_data_storage['labels'] = [datetime.now().strftime('%H:%M:%S')]
-            chart_data_storage['values'] = [current_value]
+            last_value = chart_data_storage['values'][-1]
+            if abs(current_value - last_value) >= 1.0:  # Różnica co najmniej 1$
+                should_add_point = True
+        
+        if should_add_point:
+            chart_data_storage['labels'].append(current_time)
+            chart_data_storage['values'].append(current_value)
+            
+            # Ogranicz do ostatnich 100 punktów
+            if len(chart_data_storage['labels']) > 100:
+                chart_data_storage['labels'] = chart_data_storage['labels'][-100:]
+                chart_data_storage['values'] = chart_data_storage['values'][-100:]
+            
+            # AUTO-SAVE do pliku
+            try:
+                with open('chart_data.json', 'w') as f:
+                    json.dump(chart_data_storage, f, indent=2)
+                print(f"💾 Auto-saved chart data: {len(chart_data_storage['labels'])} points")
+            except Exception as e:
+                print(f"❌ Error auto-saving chart data: {e}")
         
         return jsonify(dashboard_data)
     except Exception as e:
+        print(f"❌ Error in trading-data endpoint: {e}")
         return jsonify({'error': str(e)})
 
+# Pozostałe endpointy pozostają bez zmian
 @app.route('/api/bot-status', methods=['GET'])
 def get_bot_status():
-    """Check bot status"""
     return jsonify({
         'status': 'running' if ml_trading_bot.is_running else 'stopped',
         'capital': ml_trading_bot.virtual_capital,
@@ -1075,7 +1201,6 @@ def get_bot_status():
 
 @app.route('/api/start-bot', methods=['POST'])
 def start_bot():
-    """Start the trading bot"""
     try:
         if not ml_trading_bot.is_running:
             threading.Thread(target=ml_trading_bot.start_trading, daemon=True).start()
@@ -1087,7 +1212,6 @@ def start_bot():
 
 @app.route('/api/stop-bot', methods=['POST'])
 def stop_bot():
-    """Stop the trading bot"""
     try:
         ml_trading_bot.stop_trading()
         return jsonify({'status': 'Bot stopped successfully'})
@@ -1096,30 +1220,15 @@ def stop_bot():
 
 @app.route('/api/force-update', methods=['POST'])
 def force_update():
-    """Force update trading data"""
     try:
         ml_trading_bot.update_positions_pnl()
         return jsonify({'status': 'Data updated successfully'})
     except Exception as e:
         return jsonify({'status': f'Error updating data: {str(e)}'})
 
-@app.route('/')
-def serve_dashboard():
-    """Serve the HTML dashboard"""
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Trading Bot Dashboard</title>
-        <meta http-equiv="refresh" content="0; url=/dashboard.html">
-    </head>
-    <body>
-        <p>Redirecting to dashboard...</p>
-    </body>
-    </html>
-    """
-
 if __name__ == '__main__':
     print("🚀 Starting Enhanced ML Trading Bot Server...")
     print("📍 Dashboard available at: http://localhost:5000")
+    print("📊 Chart data synchronization: ENABLED")
+    print("🎯 REALISTIC TP LEVELS: 20-30% margin returns (2-3% price moves)")
     app.run(host='0.0.0.0', port=5000, debug=True)
