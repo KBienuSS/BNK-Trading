@@ -1386,6 +1386,7 @@
             }
 
             // Active Positions
+           // W funkcji updateDashboard - część Active Positions:
             const positionsBody = document.getElementById('positions-body');
             positionsBody.innerHTML = '';
             
@@ -1399,6 +1400,8 @@
                     const formattedCurrentPrice = formatPrice(position.symbol, currentPrice);
                     const formattedEntryPrice = formatPrice(position.symbol, position.entry_price);
                     const formattedLiquidationPrice = formatPrice(position.symbol, position.liquidation_price);
+                    const formattedTPPrice = formatPrice(position.symbol, position.exit_plan.take_profit);
+                    const formattedSLPrice = formatPrice(position.symbol, position.exit_plan.stop_loss);
                     
                     const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
                     const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
@@ -1409,6 +1412,10 @@
                         <td>${position.side || 'LONG'}</td>
                         <td>${formattedEntryPrice}</td>
                         <td>${formattedCurrentPrice}</td>
+                        <td>${formattedTPPrice}</td>
+                        <td>${formattedSLPrice}</td>
+                        <td>${position.tp_distance_pct || 0}%</td>
+                        <td>${position.sl_distance_pct || 0}%</td>
                         <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
                         <td>${position.leverage || 1}x</td>
                         <td>${formattedLiquidationPrice}</td>
@@ -1420,10 +1427,10 @@
                     positionsBody.appendChild(row);
                 });
             } else {
-                positionsBody.innerHTML = '<tr><td colspan="12" class="no-positions">No active positions</td></tr>';
+                // WAŻNE: colspan="16" aby pokryć wszystkie kolumny
+                positionsBody.innerHTML = '<tr><td colspan="16" class="no-positions">No active positions</td></tr>';
                 console.log('❌ No active positions to display');
             }
-
             // Total Unrealized P&L
             const totalUnrealizedElem = document.getElementById('total-unrealized');
             if (data.total_unrealized_pnl !== undefined) {
