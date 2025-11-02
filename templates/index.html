@@ -744,6 +744,7 @@
             <!-- ACTIVE POSITIONS - FULL WIDTH -->
             <div class="card full-width">
                 <h2 class="card-title">Active Positions</h2>
+                <!-- W sekcji Active Positions TABLE dodaj nowe kolumny: -->
                 <table class="positions-table" id="positions-table">
                     <thead>
                         <tr>
@@ -752,6 +753,10 @@
                             <th>Side</th>
                             <th>Entry Price</th>
                             <th>Current Price</th>
+                            <th>TP Price</th>
+                            <th>SL Price</th>
+                            <th>TP Distance</th>
+                            <th>SL Distance</th>
                             <th>Quantity</th>
                             <th>Leverage</th>
                             <th>Liquidation Price</th>
@@ -763,7 +768,7 @@
                     </thead>
                     <tbody id="positions-body">
                         <tr>
-                            <td colspan="12" class="no-positions">No active positions</td>
+                            <td colspan="16" class="no-positions">No active positions</td>
                         </tr>
                     </tbody>
                 </table>
