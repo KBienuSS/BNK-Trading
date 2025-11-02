@@ -62,13 +62,13 @@ class MLTradingBot:
         self.min_volume_ratio = 1.8
         self.max_position_value = 0.40
         
-        # ZAKTUALIZOWANE WIELKOŚCI POZYCJI
+        # ZAKTUALIZOWANE WIELKOŚCI POZYCJI - ZWIĘKSZONE 10x
         self.position_sizes = {
-            'ETHUSDT': 3.2,
-            'XRPUSDT': 8500.0,
-            'SOLUSDT': 28.0,
-            'BTCUSDT': 0.045,
-            'BNBUSDT': 8.5,
+            'ETHUSDT': 32.0,      # 3.2 → 32.0
+            'XRPUSDT': 85000.0,   # 8500 → 85000
+            'SOLUSDT': 280.0,     # 28 → 280
+            'BTCUSDT': 0.45,      # 0.045 → 0.45
+            'BNBUSDT': 85.0,      # 8.5 → 85
         }
         
         # NOWE PARAMETRY STRATEGII
@@ -118,6 +118,7 @@ class MLTradingBot:
         self.logger.info("🧠 ENHANCED ML TRADING BOT - REALISTIC TP LEVELS")
         self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
         self.logger.info("🎯 Target: 20-30% margin returns (2-3% price moves)")
+        self.logger.info("🚀 POSITION SIZING: INCREASED 10x")
 
     def initialize_ml_model(self):
         """Initialize ML model with Random Forest"""
@@ -470,7 +471,7 @@ class MLTradingBot:
             return "HOLD", 0.5
 
     def calculate_dynamic_position_size(self, symbol: str, price: float, confidence: float, is_breakout: bool):
-        """Dynamiczne obliczanie wielkości pozycji z pyramidingiem"""
+        """Dynamiczne obliczanie wielkości pozycji z pyramidingiem - ZWIĘKSZONE 10x"""
         try:
             # Bazowa alokacja
             base_allocation = self.asset_allocation.get(symbol, 0.15)
@@ -496,9 +497,10 @@ class MLTradingBot:
             max_position_value = effective_capital * self.max_position_value
             position_value = min(position_value, max_position_value)
             
-            # Użyj historycznej wielkości jako referencji
+            # Użyj ZWIĘKSZONYCH historycznych wielkości jako referencji
             historical_quantity = self.position_sizes.get(symbol, position_value / price)
-            final_quantity = min(position_value / price, historical_quantity * 1.5)
+            # ZWIĘKSZENIE 10x: użyj pełnej wielkości zamiast ograniczenia
+            final_quantity = historical_quantity  # Używamy bezpośrednio zwiększonych wartości
             
             final_position_value = final_quantity * price
             margin_required = final_position_value / self.leverage
@@ -660,7 +662,7 @@ class MLTradingBot:
         return opened_positions
 
     def open_breakout_position(self, symbol: str):
-        """Otwiera pozycję breakout z uwzględnieniem nowej strategii"""
+        """Otwiera pozycję breakout z uwzględnieniem ZWIĘKSZONEGO sizingu"""
         current_price = self.get_current_price(symbol)
         if not current_price:
             return None
@@ -724,6 +726,7 @@ class MLTradingBot:
         self.logger.info(f"   📊 TP: ${exit_levels['take_profit']:.2f} ({tp_percent:.1f}% = {tp_margin:.0f}% margin)")
         self.logger.info(f"   🛑 SL: ${exit_levels['stop_loss']:.2f} ({sl_percent:.1f}% = {sl_margin:.0f}% margin)")
         self.logger.info(f"   💰 Position: ${position_value:.2f} | Margin: ${margin_required:.2f}")
+        self.logger.info(f"   🚀 QUANTITY: {quantity:.2f} (10x INCREASED)")
         
         return position_id
 
@@ -993,9 +996,10 @@ class MLTradingBot:
         }
 
     def run_enhanced_breakout_strategy(self):
-        """Ulepszona główna pętla strategii z realistycznymi TP"""
-        self.logger.info("🚀 ENHANCED BREAKOUT STRATEGY - REALISTIC TP LEVELS")
+        """Ulepszona główna pętla strategii z ZWIĘKSZONYM sizingiem"""
+        self.logger.info("🚀 ENHANCED BREAKOUT STRATEGY - 10x POSITION SIZING")
         self.logger.info("🎯 Target: 20-30% margin returns (2-3% price moves)")
+        self.logger.info("💰 Position sizing: INCREASED 10x")
         
         iteration = 0
         while self.is_running:
@@ -1231,4 +1235,5 @@ if __name__ == '__main__':
     print("📍 Dashboard available at: http://localhost:5000")
     print("📊 Chart data synchronization: ENABLED")
     print("🎯 REALISTIC TP LEVELS: 20-30% margin returns (2-3% price moves)")
+    print("🚀 POSITION SIZING: INCREASED 10x")
     app.run(host='0.0.0.0', port=5000, debug=True)
