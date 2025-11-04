@@ -735,6 +735,69 @@ class QwenTradingBot:
                 self.logger.error(f"❌ Error in Qwen3 trading loop: {e}")
                 time.sleep(30)
 
+    def debug_signal_generation(self, symbol: str):
+        """Debuguje generowanie sygnałów i pokazuje dlaczego nie otwiera pozycji"""
+        print(f"\n🔍 DEBUG SIGNAL FOR {symbol}:")
+        
+        # 1. Sprawdź cenę
+        current_price = self.get_current_price(symbol)
+        print(f"   💰 Current Price: ${current_price if current_price else 'FAILED'}")
+        
+        if current_price is None:
+            print("   🚨 REASON: Cannot get current price")
+            return
+        
+        # 2. Sprawdź momentum i volume
+        momentum = self.analyze_simple_momentum(symbol)
+        volume_active = self.check_volume_activity(symbol)
+        print(f"   📈 Momentum: {momentum:.4%}")
+        print(f"   📊 Volume Active: {volume_active}")
+        
+        # 3. Sprawdź sygnał
+        signal, confidence = self.generate_qwen_signal(symbol)
+        print(f"   🎯 Signal: {signal}")
+        print(f"   ✅ Confidence: {confidence:.1%}")
+        
+        # 4. Sprawdź warunki wejścia
+        conditions = []
+        
+        # Warunek 1: Sygnał nie może być HOLD
+        if signal == "HOLD":
+            conditions.append("Signal is HOLD")
+        
+        # Warunek 2: Confidence >= 0.4
+        if confidence < 0.4:
+            conditions.append(f"Confidence too low ({confidence:.1%} < 40%)")
+        
+        # Warunek 3: Momentum i volume
+        if not (momentum > 0.01 and volume_active) and not (momentum < -0.01 and volume_active):
+            conditions.append("Momentum/volume conditions not met")
+        
+        # Warunek 4: Random check
+        if not self.should_enter_trade():
+            conditions.append("Random entry check failed")
+        
+        # Warunek 5: Max positions
+        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
+        if active_count >= self.max_simultaneous_positions:
+            conditions.append(f"Max positions reached ({active_count}/{self.max_simultaneous_positions})")
+        
+        # Warunek 6: Margin
+        if current_price:
+            quantity, position_value, margin_required = self.calculate_qwen_position_size(symbol, current_price, confidence)
+            if margin_required > self.virtual_balance:
+                conditions.append(f"Insufficient margin (Required: ${margin_required:.2f}, Available: ${self.virtual_balance:.2f})")
+        
+        # Wyświetl przyczyny
+        if conditions:
+            print("   🚨 BLOCKED BY:")
+            for condition in conditions:
+                print(f"      • {condition}")
+        else:
+            print("   ✅ READY TO OPEN POSITION!")
+        
+        return conditions
+    
     def start_trading(self):
         self.is_running = True
         threading.Thread(target=self.run_qwen_trading_strategy, daemon=True).start()
