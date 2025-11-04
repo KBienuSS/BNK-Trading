@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="https://img.icons8.com/?size=100&id=RxpP4tTaUhYX&format=png&color=000000">
-    <title>BNK Trading DeepSeek</title>
+    <title>BNK Trading - LLM Alpha Arena</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -16,6 +16,10 @@
             --loss-color: #f44336;
             --border-color: #2d4059;
             --btc-color: #f7931a;
+            --claude-color: #ff6b35;
+            --gemini-color: #4285f4;
+            --gpt-color: #10a37f;
+            --qwen-color: #ff4081;
         }
         
         * {
@@ -56,6 +60,32 @@
             display: flex;
             align-items: center;
             gap: 20px;
+        }
+        
+        .profile-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .profile-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .profile-btn.claude { background-color: var(--claude-color); color: white; }
+        .profile-btn.gemini { background-color: var(--gemini-color); color: white; }
+        .profile-btn.gpt { background-color: var(--gpt-color); color: white; }
+        .profile-btn.qwen { background-color: var(--qwen-color); color: white; }
+        
+        .profile-btn.active {
+            transform: scale(1.1);
+            box-shadow: 0 0 10px currentColor;
         }
         
         .btc-price-widget {
@@ -619,13 +649,62 @@
                 right: 5px;
             }
         }
+
+        /* LLM Profile Badge */
+        .llm-profile-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+            text-transform: uppercase;
+        }
+        
+        .llm-claude { background-color: var(--claude-color); }
+        .llm-gemini { background-color: var(--gemini-color); }
+        .llm-gpt { background-color: var(--gpt-color); }
+        .llm-qwen { background-color: var(--qwen-color); }
+
+        /* Performance Metrics Enhancements */
+        .performance-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+        }
+        
+        .stat-value {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: #a0a0a0;
+            text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <div class="logo">BNK Trading - DEEPSEEK</div>
+            <div class="logo">BNK Trading - LLM Alpha Arena</div>
             <div class="header-right">
+                <div class="profile-selector">
+                    <button class="profile-btn claude" onclick="changeProfile('Claude')">Claude</button>
+                    <button class="profile-btn gemini" onclick="changeProfile('Gemini')">Gemini</button>
+                    <button class="profile-btn gpt" onclick="changeProfile('GPT')">GPT</button>
+                    <button class="profile-btn qwen" onclick="changeProfile('Qwen')">Qwen</button>
+                </div>
                 
                 <div class="controls">
                     <div class="live-indicator" id="status-indicator">LIVE</div>
@@ -666,24 +745,44 @@
                     <h2 class="card-title">Performance Metrics</h2>
                     <div class="metrics-grid">
                         <div class="metric-item">
-                            <div class="metric-label">Average Leverage</div>
-                            <div class="metric-value" id="avg-leverage">0.0</div>
-                        </div>
-                        <div class="metric-item">
-                            <div class="metric-label">Total Profit %</div>
+                            <div class="metric-label">Total Return %</div>
                             <div class="metric-value profit" id="total-profit">0.00%</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-label">Biggest Win</div>
-                            <div class="metric-value profit" id="biggest-win">$0.00</div>
+                            <div class="metric-label">Win Rate</div>
+                            <div class="metric-value" id="win-rate">0%</div>
                         </div>
                         <div class="metric-item">
-                            <div class="metric-label">Biggest Loss</div>
-                            <div class="metric-value loss" id="biggest-loss">$0.00</div>
+                            <div class="metric-label">Total Trades</div>
+                            <div class="metric-value" id="total-trades">0</div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Avg Confidence</div>
+                            <div class="metric-value" id="avg-confidence">0%</div>
+                        </div>
+                    </div>
+                    <div class="performance-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">Long Trades</div>
+                            <div class="stat-value" id="long-trades">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Short Trades</div>
+                            <div class="stat-value" id="short-trades">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Avg Hold Time</div>
+                            <div class="stat-value" id="avg-hold-time">0h</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Active LLM</div>
+                            <div class="stat-value" id="active-llm">Claude</div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- CRYPTO PRICES WIDGET -->
             <div class="crypto-prices-widget full-width" id="cryptoPricesWidget">
                 <div class="crypto-prices-container">
                     <div class="crypto-item" data-symbol="BTCUSDT">
@@ -730,45 +829,34 @@
                         </div>
                         <div class="crypto-change" id="xrpChange">0.00%</div>
                     </div>
-                    
-                    <div class="crypto-item" data-symbol="DOGEUSDT">
-                        <div class="crypto-icon">Ð</div>
-                        <div class="crypto-info">
-                            <div class="crypto-name">DOGE</div>
-                            <div class="crypto-price" id="dogePrice">$--.--</div>
-                        </div>
-                        <div class="crypto-change" id="dogeChange">0.00%</div>
-                    </div>
                 </div>
             </div>
+
             <!-- ACTIVE POSITIONS - FULL WIDTH -->
             <div class="card full-width">
                 <h2 class="card-title">Active Positions</h2>
-                <!-- W sekcji Active Positions TABLE dodaj nowe kolumny: -->
                 <table class="positions-table" id="positions-table">
                     <thead>
                         <tr>
-                            <th>Entry Time</th>
                             <th>Symbol</th>
                             <th>Side</th>
                             <th>Entry Price</th>
                             <th>Current Price</th>
-                            <th>TP Price</th>
-                            <th>SL Price</th>
+                            <th>TP/SL</th>
                             <th>TP Distance</th>
                             <th>SL Distance</th>
                             <th>Quantity</th>
                             <th>Leverage</th>
-                            <th>Liquidation Price</th>
                             <th>Margin</th>
                             <th>Unrealized P&L</th>
                             <th>P&L %</th>
-                            <th>Action</th>
+                            <th>LLM Profile</th>
+                            <th>Confidence</th>
                         </tr>
                     </thead>
                     <tbody id="positions-body">
                         <tr>
-                            <td colspan="16" class="no-positions">No active positions</td>
+                            <td colspan="14" class="no-positions">No active positions</td>
                         </tr>
                     </tbody>
                 </table>
@@ -802,17 +890,13 @@
                         <div class="confidence-symbol">XRPUSDT</div>
                         <div class="confidence-value confidence-medium" id="confidence-xrp">0%</div>
                     </div>
-                    <div class="confidence-item">
-                        <div class="confidence-symbol">DOGEUSDT</div>
-                        <div class="confidence-value confidence-medium" id="confidence-doge">0%</div>
-                    </div>
                 </div>
                 <div class="last-update" id="confidence-update">Last update: --</div>
             </div>
             
             <!-- ACCOUNT VALUE CHART - FULL WIDTH -->
             <div class="card full-width">
-                <h2 class="card-title">Account Value</h2>
+                <h2 class="card-title">Account Value History</h2>
                 <div class="chart-controls">
                     <button class="chart-control-btn" onclick="clearChartData()">🗑️ Clear Chart</button>
                     <button class="chart-control-btn" onclick="exportChartData()">📊 Export Data</button>
@@ -837,12 +921,15 @@
                             <th>Exit Price</th>
                             <th>Quantity</th>
                             <th>P&L</th>
+                            <th>Hold Time</th>
+                            <th>LLM Profile</th>
+                            <th>Confidence</th>
                             <th>Reason</th>
                         </tr>
                     </thead>
                     <tbody id="trades-body">
                         <tr>
-                            <td colspan="8" class="no-trades">No recent trades</td>
+                            <td colspan="11" class="no-trades">No recent trades</td>
                         </tr>
                     </tbody>
                 </table>
@@ -932,7 +1019,7 @@
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'chart_data.json';
+            link.download = 'trading_chart_data.json';
             link.click();
             URL.revokeObjectURL(url);
         }
@@ -943,8 +1030,7 @@
             'ETHUSDT': 0,
             'SOLUSDT': 0,
             'BNBUSDT': 0,
-            'XRPUSDT': 0,
-            'DOGEUSDT': 0
+            'XRPUSDT': 0
         };
         
         // Funkcje dla każdej kryptowaluty
@@ -1028,22 +1114,6 @@
             }
         }
         
-        async function fetchDOGEPrice() {
-            try {
-                const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=DOGEUSDT');
-                const data = await response.json();
-                const currentPrice = parseFloat(data.price);
-                
-                updateDOGEPriceDisplay(currentPrice);
-                lastPrices['DOGEUSDT'] = currentPrice;
-                
-            } catch (error) {
-                console.error('Błąd pobierania ceny DOGE:', error);
-                document.getElementById('dogePrice').textContent = 'Error';
-                document.getElementById('dogePrice').style.color = '#ff4444';
-            }
-        }
-        
         // Funkcje display dla każdej kryptowaluty
         function updateBTCPriceDisplay(currentPrice) {
             const priceElement = document.getElementById('btcPrice');
@@ -1105,21 +1175,9 @@
             }
         }
         
-        function updateDOGEPriceDisplay(currentPrice) {
-            const priceElement = document.getElementById('dogePrice');
-            const changeElement = document.getElementById('dogeChange');
-            
-            const formattedPrice = formatPrice('DOGEUSDT', currentPrice);
-            priceElement.textContent = formattedPrice;
-            
-            if (lastPrices['DOGEUSDT'] > 0) {
-                updatePriceChange(changeElement, currentPrice, lastPrices['DOGEUSDT'], 'DOGEUSDT');
-            }
-        }
-        
         // Helper function do formatowania ceny
         function formatPrice(symbol, price) {
-            if (symbol === 'XRPUSDT' || symbol === 'DOGEUSDT') {
+            if (symbol === 'XRPUSDT') {
                 return `$${price.toFixed(4)}`;
             } else if (price < 10) {
                 return `$${price.toFixed(3)}`;
@@ -1140,9 +1198,9 @@
             
             changeElement.classList.remove('positive', 'negative', 'neutral');
             
-            if (change > 0.01) {
+            if (changePercent > 0.1) {
                 changeElement.classList.add('positive');
-            } else if (change < -0.01) {
+            } else if (changePercent < -0.1) {
                 changeElement.classList.add('negative');
             } else {
                 changeElement.classList.add('neutral');
@@ -1160,8 +1218,6 @@
             await fetchBNBPrice();
             await new Promise(resolve => setTimeout(resolve, 100));
             await fetchXRPPrice();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            await fetchDOGEPrice();
         }
 
         // Inicjalizacja wykresu
@@ -1333,7 +1389,7 @@
 
         // Aktualizuj poziomy confidence dla każdej kryptowaluty
         function updateConfidenceLevels(confidenceData) {
-            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'DOGEUSDT'];
+            const symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT'];
             
             symbols.forEach(symbol => {
                 const confidence = confidenceData[symbol] || 0;
@@ -1373,20 +1429,27 @@
 
             // Performance Metrics
             if (data.performance_metrics) {
-                document.getElementById('avg-leverage').textContent = data.performance_metrics.avg_leverage || 0;
-                
                 const totalValue = data.account_summary?.total_value || initialCapital;
                 const totalProfit = ((totalValue - initialCapital) / initialCapital) * 100;
                 const totalProfitElem = document.getElementById('total-profit');
                 totalProfitElem.textContent = totalProfit.toFixed(2) + '%';
                 totalProfitElem.className = totalProfit >= 0 ? 'metric-value profit' : 'metric-value loss';
                 
-                document.getElementById('biggest-win').textContent = '$' + (data.performance_metrics.biggest_win || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                document.getElementById('biggest-loss').textContent = '-$' + Math.abs(data.performance_metrics.biggest_loss || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                document.getElementById('win-rate').textContent = (data.performance_metrics.win_rate || 0) + '%';
+                document.getElementById('total-trades').textContent = data.performance_metrics.total_trades || 0;
+                document.getElementById('avg-confidence').textContent = (data.performance_metrics.avg_confidence || 0) + '%';
+                document.getElementById('long-trades').textContent = data.performance_metrics.long_trades || 0;
+                document.getElementById('short-trades').textContent = data.performance_metrics.short_trades || 0;
+                document.getElementById('avg-hold-time').textContent = (data.performance_metrics.avg_holding_hours || 0).toFixed(1) + 'h';
+            }
+
+            // Active LLM Profile
+            if (data.llm_config) {
+                document.getElementById('active-llm').textContent = data.llm_config.active_profile || 'Claude';
+                updateProfileButtons(data.llm_config.active_profile);
             }
 
             // Active Positions
-           // W funkcji updateDashboard - część Active Positions:
             const positionsBody = document.getElementById('positions-body');
             positionsBody.innerHTML = '';
             
@@ -1397,40 +1460,36 @@
                     const row = document.createElement('tr');
                     
                     const currentPrice = position.current_price || position.entry_price;
-                    const formattedCurrentPrice = formatPrice(position.symbol, currentPrice);
-                    const formattedEntryPrice = formatPrice(position.symbol, position.entry_price);
-                    const formattedLiquidationPrice = formatPrice(position.symbol, position.liquidation_price);
-                    const formattedTPPrice = formatPrice(position.symbol, position.exit_plan.take_profit);
-                    const formattedSLPrice = formatPrice(position.symbol, position.exit_plan.stop_loss);
-                    
                     const pnlClass = (position.unrealized_pnl || 0) >= 0 ? 'profit' : 'loss';
                     const pnlPercent = position.margin > 0 ? ((position.unrealized_pnl || 0) / position.margin) * 100 : 0;
                     
+                    // Oblicz odległości do TP/SL
+                    const tpDistance = position.tp_distance_pct || 0;
+                    const slDistance = position.sl_distance_pct || 0;
+                    
                     row.innerHTML = `
-                        <td>${position.entry_time || 'N/A'}</td>
                         <td><strong>${position.symbol}</strong></td>
                         <td>${position.side || 'LONG'}</td>
-                        <td>${formattedEntryPrice}</td>
-                        <td>${formattedCurrentPrice}</td>
-                        <td>${formattedTPPrice}</td>
-                        <td>${formattedSLPrice}</td>
-                        <td>${position.tp_distance_pct || 0}%</td>
-                        <td>${position.sl_distance_pct || 0}%</td>
+                        <td>$${(position.entry_price || 0).toFixed(4)}</td>
+                        <td>$${(currentPrice || 0).toFixed(4)}</td>
+                        <td>TP: $${(position.exit_plan?.take_profit || 0).toFixed(4)}<br>SL: $${(position.exit_plan?.stop_loss || 0).toFixed(4)}</td>
+                        <td>${tpDistance.toFixed(2)}%</td>
+                        <td>${slDistance.toFixed(2)}%</td>
                         <td>${(position.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
                         <td>${position.leverage || 1}x</td>
-                        <td>${formattedLiquidationPrice}</td>
                         <td>$${(position.margin || 0).toFixed(2)}</td>
                         <td class="${pnlClass}">$${(position.unrealized_pnl || 0).toFixed(2)}</td>
                         <td class="${pnlClass}">${pnlPercent.toFixed(2)}%</td>
-                        <td><button class="view-button" onclick="viewExitPlan('${position.symbol}')">Exit Plan</button></td>
+                        <td><span class="llm-profile-badge llm-${position.llm_profile?.toLowerCase() || 'claude'}">${position.llm_profile || 'Claude'}</span></td>
+                        <td>${Math.round((position.confidence || 0) * 100)}%</td>
                     `;
                     positionsBody.appendChild(row);
                 });
             } else {
-                // WAŻNE: colspan="16" aby pokryć wszystkie kolumny
-                positionsBody.innerHTML = '<tr><td colspan="16" class="no-positions">No active positions</td></tr>';
+                positionsBody.innerHTML = '<tr><td colspan="14" class="no-positions">No active positions</td></tr>';
                 console.log('❌ No active positions to display');
             }
+            
             // Total Unrealized P&L
             const totalUnrealizedElem = document.getElementById('total-unrealized');
             if (data.total_unrealized_pnl !== undefined) {
@@ -1465,17 +1524,30 @@
                         <td>$${(trade.exit_price || 0).toFixed(4)}</td>
                         <td>${(trade.quantity || 0).toLocaleString('en-US', {maximumFractionDigits: 4})}</td>
                         <td class="${pnlClass}">$${(trade.realized_pnl || 0).toFixed(2)}</td>
+                        <td>${(trade.holding_hours || 0).toFixed(1)}h</td>
+                        <td><span class="llm-profile-badge llm-${trade.llm_profile?.toLowerCase() || 'claude'}">${trade.llm_profile || 'Claude'}</span></td>
+                        <td>${Math.round((trade.confidence || 0) * 100)}%</td>
                         <td>${trade.exit_reason || 'MANUAL'}</td>
                     `;
                     tradesBody.appendChild(row);
                 });
             } else {
-                tradesBody.innerHTML = '<tr><td colspan="8" class="no-trades">No recent trades</td></tr>';
+                tradesBody.innerHTML = '<tr><td colspan="11" class="no-trades">No recent trades</td></tr>';
             }
             document.getElementById('trades-update').textContent = `Last update: ${now}`;
 
             // Aktualizuj wykres przy KAŻDEJ aktualizacji
             updateChart(data);
+        }
+
+        // Aktualizuj przyciski profilu LLM
+        function updateProfileButtons(activeProfile) {
+            document.querySelectorAll('.profile-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent === activeProfile) {
+                    btn.classList.add('active');
+                }
+            });
         }
 
         // Kontrola bota
@@ -1501,6 +1573,24 @@
             }
         }
 
+        async function changeProfile(profileName) {
+            try {
+                const response = await fetch('/api/change-profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ profile: profileName })
+                });
+                const data = await response.json();
+                alert(data.status);
+                updateProfileButtons(profileName);
+                fetchTradingData();
+            } catch (error) {
+                alert('Error changing profile: ' + error.message);
+            }
+        }
+
         async function forceUpdate() {
             try {
                 const response = await fetch('/api/force-update');
@@ -1512,14 +1602,11 @@
             }
         }
 
-        function viewExitPlan(symbol) {
-            alert(`Exit plan for ${symbol}:\n\n- Take Profit: 5% above entry\n- Stop Loss: 3% below entry\n- Invalidation: 5% below entry\n\nView detailed analysis in trading logs.`);
-        }
-
         // Inicjalizacja
         document.addEventListener('DOMContentLoaded', async function() {
-            console.log('🚀 Trading Dashboard - LIVE MODE');
+            console.log('🚀 LLM Trading Dashboard - Alpha Arena Mode');
             console.log('📍 Dashboard: http://localhost:5000');
+            console.log('🧠 LLM Profiles: Claude, Gemini, GPT, Qwen');
             
             // Najpierw załaduj dane wykresu z serwera
             await loadChartData();
