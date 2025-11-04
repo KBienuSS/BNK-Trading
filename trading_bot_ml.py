@@ -1,3 +1,4 @@
+# trading_bot_ml.py
 import pandas as pd
 import numpy as np
 import requests
@@ -17,11 +18,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('qwen_trading_bot_debug.log', encoding='utf-8')
+        logging.FileHandler('llm_trading_bot.log', encoding='utf-8')
     ]
 )
 
-class QwenTradingBot:
+class LLMTradingBot:
     def __init__(self, initial_capital=10000, leverage=10):
         self.virtual_capital = initial_capital
         self.virtual_balance = initial_capital
@@ -33,11 +34,47 @@ class QwenTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
-        # TYLKO PROFIL QWEN3 - FIXED
-        self.llm_profile = 'Qwen'
+        # PROFIL ZACHOWANIA INSPIROWANY LLM (wg Alpha Arena)
+        self.llm_profiles = {
+            'Claude': {
+                'risk_appetite': 'MEDIUM',
+                'confidence_bias': 0.6,
+                'short_frequency': 0.1,  # Rzadko shortuje
+                'holding_bias': 'LONG',
+                'trade_frequency': 'LOW',
+                'position_sizing': 'CONSERVATIVE'
+            },
+            'Gemini': {
+                'risk_appetite': 'HIGH', 
+                'confidence_bias': 0.7,
+                'short_frequency': 0.35,
+                'holding_bias': 'SHORT',
+                'trade_frequency': 'HIGH',
+                'position_sizing': 'AGGRESSIVE'
+            },
+            'GPT': {
+                'risk_appetite': 'LOW',
+                'confidence_bias': 0.3,
+                'short_frequency': 0.4,
+                'holding_bias': 'NEUTRAL',
+                'trade_frequency': 'MEDIUM',
+                'position_sizing': 'CONSERVATIVE'
+            },
+            'Qwen': {
+                'risk_appetite': 'HIGH',
+                'confidence_bias': 0.85,
+                'short_frequency': 0.2,
+                'holding_bias': 'LONG', 
+                'trade_frequency': 'MEDIUM',
+                'position_sizing': 'VERY_AGGRESSIVE'
+            }
+        }
+        
+        # AKTYWNY PROFIL (można zmieniać)
+        self.active_profile = 'Claude'
         
         # PARAMETRY OPERACYJNE
-        self.max_simultaneous_positions = 6  # Zwiększone dla testów
+        self.max_simultaneous_positions = 4
         self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']
         
         # STATYSTYKI
@@ -64,339 +101,57 @@ class QwenTradingBot:
             'average_confidence': 0,
             'portfolio_diversity': 0,
             'last_update': datetime.now(),
-            'active_profile': self.llm_profile
+            'active_profile': self.active_profile
         }
         
-        self.logger.info("🧠 QWEN3 TRADING BOT - DEBUG MODE")
+        self.logger.info("🧠 LLM-STYLE TRADING BOT - Alpha Arena Inspired")
         self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
-        self.logger.info("🎯 Profile: Qwen3 (Fixed - No Switching)")
+        self.logger.info(f"🎯 Active LLM Profile: {self.active_profile}")
 
-    def debug_price_apis(self):
-        """Testuje wszystkie API cenowe i pokazuje które działają"""
-        print("\n" + "="*60)
-        print("🧪 DEBUG: TESTING ALL PRICE APIs")
-        print("="*60)
-        
-        for symbol in self.assets:
-            print(f"\n🔍 Testing {symbol}:")
-            
-            # Test Binance
-            try:
-                url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    price = float(response.json()['price'])
-                    print(f"  ✅ Binance: ${price:,.2f}")
-                else:
-                    print(f"  ❌ Binance: HTTP {response.status_code}")
-            except Exception as e:
-                print(f"  ❌ Binance: {str(e)[:50]}...")
-            
-            # Test KuCoin
-            try:
-                kucoin_symbol = symbol.replace('USDT', '-USDT')
-                url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_symbol}"
-                response = requests.get(url, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('code') == '200000':
-                        price = float(data['data']['price'])
-                        print(f"  ✅ KuCoin: ${price:,.2f}")
-                    else:
-                        print(f"  ❌ KuCoin: {data.get('msg', 'Unknown error')}")
-                else:
-                    print(f"  ❌ KuCoin: HTTP {response.status_code}")
-            except Exception as e:
-                print(f"  ❌ KuCoin: {str(e)[:50]}...")
-            
-            # Test CoinGecko
-            try:
-                coin_id = self.symbol_to_coingecko(symbol)
-                if coin_id:
-                    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-                    response = requests.get(url, timeout=5)
-                    if response.status_code == 200:
-                        data = response.json()
-                        if coin_id in data:
-                            price = data[coin_id]['usd']
-                            print(f"  ✅ CoinGecko: ${price:,.2f}")
-                        else:
-                            print(f"  ❌ CoinGecko: Coin not found")
-                    else:
-                        print(f"  ❌ CoinGecko: HTTP {response.status_code}")
-                else:
-                    print(f"  ❌ CoinGecko: No mapping for {symbol}")
-            except Exception as e:
-                print(f"  ❌ CoinGecko: {str(e)[:50]}...")
-            
-            # Test metody bota
-            bot_price = self.get_current_price(symbol)
-            if bot_price:
-                print(f"  🤖 BOT FINAL PRICE: ${bot_price:,.2f}")
-            else:
-                print(f"  🚨 BOT: NO PRICE AVAILABLE")
-        
-        print("\n" + "="*60)
-        print("🧪 PRICE API TEST COMPLETED")
-        print("="*60)
+    def get_current_profile(self):
+        """Zwraca aktywny profil LLM"""
+        return self.llm_profiles[self.active_profile]
 
-    def debug_signal_generation(self, symbol: str):
-        """Debuguje generowanie sygnałów i pokazuje dlaczego nie otwiera pozycji"""
-        print(f"\n🔍 DEBUG SIGNAL FOR {symbol}:")
-        
-        # 1. Sprawdź cenę
-        current_price = self.get_current_price(symbol)
-        print(f"   💰 Current Price: ${current_price if current_price else 'FAILED'}")
-        
-        if current_price is None:
-            print("   🚨 REASON: Cannot get current price")
-            return []
-        
-        # 2. Sprawdź momentum i volume
-        momentum = self.analyze_simple_momentum(symbol)
-        volume_active = self.check_volume_activity(symbol)
-        print(f"   📈 Momentum: {momentum:.4%}")
-        print(f"   📊 Volume Active: {volume_active}")
-        
-        # 3. Sprawdź sygnał
-        signal, confidence = self.generate_qwen_signal(symbol)
-        print(f"   🎯 Signal: {signal}")
-        print(f"   ✅ Confidence: {confidence:.1%}")
-        
-        # 4. Sprawdź warunki wejścia
-        conditions = []
-        
-        # Warunek 1: Sygnał nie może być HOLD
-        if signal == "HOLD":
-            conditions.append("Signal is HOLD")
-        
-        # Warunek 2: Confidence >= 0.4
-        if confidence < 0.4:
-            conditions.append(f"Confidence too low ({confidence:.1%} < 40%)")
-        
-        # Warunek 3: Momentum i volume
-        momentum_condition_met = (momentum > 0.01 and volume_active) or (momentum < -0.01 and volume_active)
-        if not momentum_condition_met:
-            conditions.append(f"Momentum/volume conditions not met (momentum: {momentum:.4%}, volume: {volume_active})")
-        
-        # Warunek 4: Random check
-        if not self.should_enter_trade():
-            conditions.append("Random entry check failed")
-        
-        # Warunek 5: Max positions
-        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
-        if active_count >= self.max_simultaneous_positions:
-            conditions.append(f"Max positions reached ({active_count}/{self.max_simultaneous_positions})")
-        
-        # Warunek 6: Margin
-        quantity, position_value, margin_required = self.calculate_qwen_position_size(symbol, current_price, confidence)
-        print(f"   💵 Position Value: ${position_value:.2f}")
-        print(f"   📦 Margin Required: ${margin_required:.2f}")
-        print(f"   💰 Available Balance: ${self.virtual_balance:.2f}")
-        
-        if margin_required > self.virtual_balance:
-            conditions.append(f"Insufficient margin (Required: ${margin_required:.2f}, Available: ${self.virtual_balance:.2f})")
-        
-        # Wyświetl przyczyny
-        if conditions:
-            print("   🚨 BLOCKED BY:")
-            for condition in conditions:
-                print(f"      • {condition}")
-        else:
-            print("   ✅ READY TO OPEN POSITION!")
-            print(f"   📊 Would open: {quantity:.6f} {symbol} @ ${current_price:.2f}")
-        
-        return conditions
+    def set_active_profile(self, profile_name: str):
+        """Zmienia aktywny profil zachowania"""
+        if profile_name in self.llm_profiles:
+            self.active_profile = profile_name
+            self.dashboard_data['active_profile'] = profile_name
+            self.logger.info(f"🔄 Changed LLM profile to: {profile_name}")
+            return True
+        return False
 
-    def debug_all_signals(self):
-        """Debuguje wszystkie symbole na raz"""
-        print("\n" + "="*60)
-        print("🧪 DEBUG: CHECKING ALL SYMBOLS")
-        print("="*60)
-        
-        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
-        print(f"📊 Active Positions: {active_count}/{self.max_simultaneous_positions}")
-        print(f"💰 Available Balance: ${self.virtual_balance:.2f}")
-        
-        for symbol in self.assets:
-            self.debug_signal_generation(symbol)
-        
-        print("\n" + "="*60)
-        print("🧪 SIGNAL DEBUG COMPLETED")
-        print("="*60)
-
-    def get_current_price(self, symbol: str) -> Optional[float]:
-        """Pobiera RZECZYWISTE ceny tylko z API"""
+    def get_current_price(self, symbol: str):
+        """Pobiera aktualną cenę - uproszczona wersja"""
         try:
-            # 1. GŁÓWNE ŹRÓDŁO: Binance API
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-            response = requests.get(url, timeout=5)
+            # Symulacja ceny z lekkim szumem
+            base_prices = {
+                'BTCUSDT': 112614,
+                'ETHUSDT': 3485, 
+                'SOLUSDT': 178,
+                'XRPUSDT': 0.615,
+                'BNBUSDT': 582
+            }
             
-            if response.status_code == 200:
-                data = response.json()
-                current_price = float(data['price'])
-                self.logger.info(f"✅ Binance LIVE Price for {symbol}: ${current_price}")
-                return current_price
-                
-        except Exception as e:
-            self.logger.warning(f"Binance failed for {symbol}: {e}")
-        
-        try:
-            # 2. BACKUP: KuCoin API
-            kucoin_symbol = symbol.replace('USDT', '-USDT')
-            url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_symbol}"
-            response = requests.get(url, timeout=5)
+            base_price = base_prices.get(symbol, 100)
+            volatility = random.uniform(-0.002, 0.002)  # 0.2% szumu
+            current_price = base_price * (1 + volatility)
             
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('code') == '200000' and data.get('data'):
-                    price = float(data['data']['price'])
-                    self.logger.info(f"✅ KuCoin Price for {symbol}: ${price}")
-                    return price
-                    
-        except Exception as e:
-            self.logger.warning(f"KuCoin failed: {e}")
-        
-        try:
-            # 3. OSTATECZNY FALLBACK: CoinGecko API
-            coin_id = self.symbol_to_coingecko(symbol)
-            if coin_id:
-                url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-                response = requests.get(url, timeout=5)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if coin_id in data and 'usd' in data[coin_id]:
-                        price = data[coin_id]['usd']
-                        self.logger.info(f"✅ CoinGecko Price for {symbol}: ${price}")
-                        return float(price)
-                        
-        except Exception as e:
-            self.logger.warning(f"CoinGecko failed: {e}")
-        
-        self.logger.error(f"❌ ALL PRICE APIS FAILED for {symbol}")
-        return None
-
-    def symbol_to_coingecko(self, symbol: str) -> Optional[str]:
-        """Konwertuje symbol na CoinGecko ID"""
-        mapping = {
-            'BTCUSDT': 'bitcoin',
-            'ETHUSDT': 'ethereum', 
-            'BNBUSDT': 'binancecoin',
-            'SOLUSDT': 'solana',
-            'XRPUSDT': 'ripple'
-        }
-        return mapping.get(symbol, None)
-
-    def get_historical_data(self, symbol: str, interval: str = '3m', limit: int = 100) -> Optional[pd.DataFrame]:
-        """Pobiera RZECZYWISTE dane historyczne"""
-        try:
-            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-            response = requests.get(url, timeout=10)
+            return round(current_price, 4)
             
-            if response.status_code == 200:
-                data = response.json()
-                df = pd.DataFrame(data, columns=[
-                    'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                    'close_time', 'quote_asset_volume', 'number_of_trades',
-                    'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-                ])
-                
-                for col in ['open', 'high', 'low', 'close', 'volume']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-                
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                df = df.sort_values('timestamp').reset_index(drop=True)
-                
-                self.logger.info(f"✅ Binance Historical Data for {symbol}: {len(df)} candles")
-                return df
-                
         except Exception as e:
-            self.logger.warning(f"Binance historical data failed: {e}")
-        
-        try:
-            kucoin_symbol = symbol.replace('USDT', '-USDT')
-            kucoin_interval = self.convert_interval_to_kucoin(interval)
-            url = f"https://api.kucoin.com/api/v1/market/candles?symbol={kucoin_symbol}&type={kucoin_interval}"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('code') == '200000' and data.get('data'):
-                    candles = data['data']
-                    if candles and len(candles) > 0:
-                        df = pd.DataFrame(candles, columns=['timestamp', 'open', 'close', 'high', 'low', 'volume', 'turnover'])
-                        for col in ['open', 'close', 'high', 'low', 'volume']:
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                        df['timestamp'] = pd.to_datetime(df['timestamp'].astype('int64'), unit='s')
-                        df = df.sort_values('timestamp').reset_index(drop=True)
-                        
-                        if len(df) > limit:
-                            df = df.tail(limit)
-                            
-                        self.logger.info(f"✅ KuCoin Historical Data for {symbol}: {len(df)} candles")
-                        return df
-                        
-        except Exception as e:
-            self.logger.warning(f"KuCoin historical data failed: {e}")
-        
-        try:
-            coin_id = self.symbol_to_coingecko(symbol)
-            if coin_id:
-                days = max(1, limit // 24)
-                url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}"
-                response = requests.get(url, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data and len(data) > 0:
-                        df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
-                        for col in ['open', 'high', 'low', 'close']:
-                            df[col] = pd.to_numeric(df[col], errors='coerce')
-                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                        df['volume'] = [10000] * len(df)
-                        
-                        if len(df) > limit:
-                            df = df.tail(limit)
-                            
-                        self.logger.info(f"✅ CoinGecko Historical Data for {symbol}: {len(df)} candles")
-                        return df
-                        
-        except Exception as e:
-            self.logger.warning(f"CoinGecko historical data failed: {e}")
-        
-        self.logger.error(f"❌ ALL HISTORICAL APIS FAILED for {symbol}")
-        return None
-
-    def convert_interval_to_kucoin(self, interval: str) -> str:
-        """Konwertuje interwał Binance na KuCoin"""
-        mapping = {
-            '1m': '1min',
-            '3m': '3min', 
-            '5m': '5min',
-            '15m': '15min',
-            '1h': '1hour',
-            '4h': '4hour',
-            '1d': '1day'
-        }
-        return mapping.get(interval, '3min')
+            self.logger.error(f"❌ Error getting price for {symbol}: {e}")
+            return base_prices.get(symbol, 100)
 
     def analyze_simple_momentum(self, symbol: str) -> float:
-        """Analiza momentum na RZECZYWISTYCH danych"""
+        """Prosta analiza momentum - zamiast skomplikowanych wskaźników"""
         try:
-            df = self.get_historical_data(symbol, '3m', 20)
-            if df is None or len(df) < 5:
-                return 0.0
-            
+            # Symulacja prostych danych historycznych
             current_price = self.get_current_price(symbol)
-            if current_price is None:
-                return 0.0
-                
-            price_changes = df['close'].pct_change().dropna().tail(5)
-            if len(price_changes) == 0:
-                return 0.0
-                
-            momentum = price_changes.mean()
+            
+            # Losowy momentum w zakresie -3% do +3%
+            momentum = random.uniform(-0.03, 0.03)
+            
             return momentum
             
         except Exception as e:
@@ -404,73 +159,80 @@ class QwenTradingBot:
             return 0.0
 
     def check_volume_activity(self, symbol: str) -> bool:
-        """Sprawdza aktywność wolumenu na RZECZYWISTYCH danych"""
-        try:
-            df = self.get_historical_data(symbol, '3m', 20)
-            if df is None or len(df) < 10:
-                return False
-            
-            current_volume = df['volume'].iloc[-1] if len(df) > 0 else 0
-            avg_volume = df['volume'].tail(10).mean()
-            
-            return current_volume > avg_volume * 1.3
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error checking volume for {symbol}: {e}")
-            return False
+        """Prosty check aktywności wolumenu"""
+        # 70% szans na "aktywny" volume
+        return random.random() < 0.7
 
-    def generate_qwen_signal(self, symbol: str) -> Tuple[str, float]:
-        """Generuje sygnał w stylu Qwen3 - AGRESYWNY"""
-        # PARAMETRY QWEN3 - WYSOKA AGRESYWNOŚĆ
-        base_confidence = 0.85  # Wysoka confidence
-        short_frequency = 0.2   # Rzadko shortuje
+    def generate_llm_signal(self, symbol: str) -> Tuple[str, float]:
+        """Generuje sygnał w stylu LLM - proste reguły + element losowości"""
+        profile = self.get_current_profile()
         
-        # RZECZYWISTE obserwacje
+        # Podstawowe obserwacje
         momentum = self.analyze_simple_momentum(symbol)
         volume_active = self.check_volume_activity(symbol)
         
+        # Confidence bazowe z profilu
+        base_confidence = profile['confidence_bias']
+        
+        # Modyfikatory confidence
         confidence_modifiers = 0
         
-        if momentum > 0.01:
-            confidence_modifiers += 0.20  # Większy bonus dla Qwena
-        elif momentum < -0.01: 
+        if momentum > 0.01:  # Pozytywny momentum
             confidence_modifiers += 0.15
+        elif momentum < -0.01:  # Negatywny momentum  
+            confidence_modifiers += 0.1
             
         if volume_active:
-            confidence_modifiers += 0.15  # Większy bonus volume
+            confidence_modifiers += 0.1
             
+        # Final confidence z losowością
         final_confidence = min(base_confidence + confidence_modifiers + random.uniform(-0.1, 0.1), 0.95)
-        final_confidence = max(final_confidence, 0.3)  # Minimum 30% dla Qwena
+        final_confidence = max(final_confidence, 0.1)  # Minimum 10%
         
-        # AGRESYWNE WARUNKI QWENA
-        if momentum > 0.01 and volume_active:  # Mniej restrykcyjne warunki
+        # Decyzja o kierunku
+        if momentum > 0.015 and volume_active:
             signal = "LONG"
-        elif momentum < -0.01 and volume_active:
-            if random.random() < short_frequency:
+        elif momentum < -0.015 and volume_active:
+            # Uwzględnij skłonność do shortowania z profilu
+            if random.random() < profile['short_frequency']:
                 signal = "SHORT"
             else:
                 signal = "HOLD"
         else:
             signal = "HOLD"
             
-        self.logger.info(f"🎯 QWEN3 SIGNAL: {symbol} -> {signal} (Conf: {final_confidence:.1%})")
+        self.logger.info(f"🎯 {self.active_profile} SIGNAL: {symbol} -> {signal} (Conf: {final_confidence:.1%})")
         
         return signal, final_confidence
 
-    def calculate_qwen_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
-        """Oblicza wielkość pozycji w stylu Qwen3 - AGRESYWNY"""
-        # QWEN3 - WYSOKA ALOKACJA
-        base_allocation = 0.30  # 30% kapitału na pozycję
+    def calculate_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
+        """Oblicza wielkość pozycji w stylu LLM"""
+        profile = self.get_current_profile()
         
-        confidence_multiplier = 0.6 + (confidence * 0.4)  # Większy wpływ confidence
+        # Bazowa alokacja w zależności od profilu
+        base_allocation = {
+            'Claude': 0.15,
+            'Gemini': 0.25, 
+            'GPT': 0.10,
+            'Qwen': 0.30
+        }.get(self.active_profile, 0.15)
         
-        # QWEN - VERY AGGRESSIVE
-        sizing_multiplier = 1.5
+        # Modyfikator confidence
+        confidence_multiplier = 0.5 + (confidence * 0.5)
         
+        # Modyfikator agresywności
+        sizing_multiplier = {
+            'CONSERVATIVE': 0.8,
+            'AGGRESSIVE': 1.2,
+            'VERY_AGGRESSIVE': 1.5
+        }.get(profile['position_sizing'], 1.0)
+        
+        # Oblicz wartość pozycji
         position_value = (self.virtual_capital * base_allocation * 
                          confidence_multiplier * sizing_multiplier)
         
-        max_position_value = self.virtual_capital * 0.5  # 50% max dla Qwena
+        # Limit maksymalnej pozycji
+        max_position_value = self.virtual_capital * 0.4
         position_value = min(position_value, max_position_value)
         
         quantity = position_value / price
@@ -478,33 +240,38 @@ class QwenTradingBot:
         
         return quantity, position_value, margin_required
 
-    def calculate_qwen_exit_plan(self, entry_price: float, confidence: float, side: str) -> Dict:
-        """Oblicza plan wyjścia w stylu Qwen3 - AGRESYWNY"""
-        # QWEN3 - AGRESYWNE TP/SL
-        if confidence > 0.7:
-            if side == "LONG":
-                take_profit = entry_price * 1.025  # 2.5% TP
-                stop_loss = entry_price * 0.985    # 1.5% SL
-            else:
-                take_profit = entry_price * 0.975  # 2.5% TP
-                stop_loss = entry_price * 1.015    # 1.5% SL
-        elif confidence > 0.5:
+    def calculate_llm_exit_plan(self, entry_price: float, confidence: float, side: str) -> Dict:
+        """Oblicza plan wyjścia w stylu LLM"""
+        profile = self.get_current_profile()
+        
+        if confidence > 0.7:  # Wysoka confidence
             if side == "LONG":
                 take_profit = entry_price * 1.018  # 1.8% TP
-                stop_loss = entry_price * 0.988    # 1.2% SL
-            else:
+                stop_loss = entry_price * 0.992    # 0.8% SL
+            else:  # SHORT
                 take_profit = entry_price * 0.982  # 1.8% TP
-                stop_loss = entry_price * 1.012    # 1.2% SL
-        else:
+                stop_loss = entry_price * 1.008    # 0.8% SL
+        elif confidence > 0.5:  # Średnia confidence
             if side == "LONG":
                 take_profit = entry_price * 1.012  # 1.2% TP
-                stop_loss = entry_price * 0.992    # 0.8% SL
-            else:
+                stop_loss = entry_price * 0.994    # 0.6% SL
+            else:  # SHORT
                 take_profit = entry_price * 0.988  # 1.2% TP
-                stop_loss = entry_price * 1.008    # 0.8% SL
+                stop_loss = entry_price * 1.006    # 0.6% SL
+        else:  # Niska confidence
+            if side == "LONG":
+                take_profit = entry_price * 1.008  # 0.8% TP
+                stop_loss = entry_price * 0.996    # 0.4% SL
+            else:  # SHORT
+                take_profit = entry_price * 0.992  # 0.8% TP
+                stop_loss = entry_price * 1.004    # 0.4% SL
         
-        # QWEN - HIGH RISK MULTIPLIER
-        risk_multiplier = 1.2
+        # Modyfikuj wg profilu ryzyka
+        risk_multiplier = {
+            'LOW': 0.8,
+            'MEDIUM': 1.0,
+            'HIGH': 1.2
+        }.get(profile['risk_appetite'], 1.0)
         
         if side == "LONG":
             take_profit = entry_price + (take_profit - entry_price) * risk_multiplier
@@ -516,59 +283,59 @@ class QwenTradingBot:
         return {
             'take_profit': round(take_profit, 4),
             'stop_loss': round(stop_loss, 4),
-            'invalidation': entry_price * 0.97 if side == "LONG" else entry_price * 1.03,
-            'max_holding_hours': random.randint(2, 8)  # Dłuższe holdowanie
+            'invalidation': entry_price * 0.98 if side == "LONG" else entry_price * 1.02,
+            'max_holding_hours': random.randint(1, 6)  # Losowy czas holdingu
         }
 
     def should_enter_trade(self) -> bool:
-        """Qwen3 - WYSOKA CZĘSTOTLIWOŚĆ TRADINGU"""
-        frequency_chance = 0.9  # 90% szans na transakcję (zwiększone dla debug)
+        """Decyduje czy wejść w transakcję wg profilu częstotliwości"""
+        profile = self.get_current_profile()
+        
+        frequency_chance = {
+            'LOW': 0.3,      # 30% szans na transakcję
+            'MEDIUM': 0.5,   # 50% szans
+            'HIGH': 0.7      # 70% szans
+        }.get(profile['trade_frequency'], 0.5)
+        
         return random.random() < frequency_chance
 
-    def open_qwen_position(self, symbol: str):
-        """Otwiera pozycję w stylu Qwen3 z debugowaniem"""
-        # DEBUG: Sprawdź dlaczego nie wchodzi
-        debug_conditions = self.debug_signal_generation(symbol)
-        
-        if debug_conditions:  # Jeśli są jakieś blokady
-            self.logger.info(f"⏹️ Position blocked for {symbol}: {debug_conditions}")
-            return None
-            
+    def open_llm_position(self, symbol: str):
+        """Otwiera pozycję w stylu LLM"""
         if not self.should_enter_trade():
-            self.logger.info(f"🎲 Random check failed for {symbol}")
             return None
             
         current_price = self.get_current_price(symbol)
-        if current_price is None:
-            self.logger.error(f"❌ Cannot open position for {symbol} - no price data")
+        if not current_price:
             return None
             
-        signal, confidence = self.generate_qwen_signal(symbol)
-        if signal == "HOLD" or confidence < 0.4:
-            self.logger.info(f"⏹️ Signal blocked: {symbol} -> {signal} (Conf: {confidence:.1%})")
+        signal, confidence = self.generate_llm_signal(symbol)
+        if signal == "HOLD" or confidence < 0.3:
             return None
             
+        # Sprawdź limit pozycji
         active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
         if active_positions >= self.max_simultaneous_positions:
-            self.logger.info(f"📦 Max positions: {active_count}/{self.max_simultaneous_positions}")
             return None
             
-        quantity, position_value, margin_required = self.calculate_qwen_position_size(
+        # Oblicz wielkość pozycji
+        quantity, position_value, margin_required = self.calculate_position_size(
             symbol, current_price, confidence
         )
         
         if margin_required > self.virtual_balance:
-            self.logger.warning(f"💰 Insufficient balance: ${margin_required:.2f} > ${self.virtual_balance:.2f}")
+            self.logger.warning(f"💰 Insufficient balance for {symbol}")
             return None
             
-        exit_plan = self.calculate_qwen_exit_plan(current_price, confidence, signal)
+        # Oblicz plan wyjścia
+        exit_plan = self.calculate_llm_exit_plan(current_price, confidence, signal)
         
+        # Cena likwidacji
         if signal == "LONG":
             liquidation_price = current_price * (1 - 0.9 / self.leverage)
         else:
             liquidation_price = current_price * (1 + 0.9 / self.leverage)
         
-        position_id = f"qwen_{self.position_id}"
+        position_id = f"llm_{self.position_id}"
         self.position_id += 1
         
         position = {
@@ -583,22 +350,24 @@ class QwenTradingBot:
             'status': 'ACTIVE',
             'unrealized_pnl': 0,
             'confidence': confidence,
-            'llm_profile': self.llm_profile,
+            'llm_profile': self.active_profile,
             'exit_plan': exit_plan
         }
         
         self.positions[position_id] = position
         self.virtual_balance -= margin_required
         
+        # Statystyki
         if signal == "LONG":
             self.stats['long_trades'] += 1
         else:
             self.stats['short_trades'] += 1
         
+        # Logowanie
         tp_distance = (exit_plan['take_profit'] - current_price) / current_price * 100
         sl_distance = (current_price - exit_plan['stop_loss']) / current_price * 100
         
-        self.logger.info(f"🎯 QWEN3 OPEN: {symbol} {signal} @ ${current_price:.4f}")
+        self.logger.info(f"🎯 {self.active_profile} OPEN: {symbol} {signal} @ ${current_price:.4f}")
         self.logger.info(f"   📊 Confidence: {confidence:.1%} | Size: ${position_value:.2f}")
         self.logger.info(f"   🎯 TP: {exit_plan['take_profit']:.4f} ({tp_distance:+.2f}%)")
         self.logger.info(f"   🛑 SL: {exit_plan['stop_loss']:.4f} ({sl_distance:+.2f}%)")
@@ -606,6 +375,7 @@ class QwenTradingBot:
         return position_id
 
     def update_positions_pnl(self):
+        """Aktualizuje P&L wszystkich pozycji"""
         total_unrealized = 0
         total_margin = 0
         total_confidence = 0
@@ -616,13 +386,13 @@ class QwenTradingBot:
                 continue
                 
             current_price = self.get_current_price(position['symbol'])
-            if current_price is None:
+            if not current_price:
                 continue
                 
             if position['side'] == 'LONG':
                 pnl_pct = (current_price - position['entry_price']) / position['entry_price']
                 unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
-            else:
+            else:  # SHORT
                 pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
                 unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
             
@@ -634,6 +404,7 @@ class QwenTradingBot:
             total_confidence += position['confidence']
             confidence_count += 1
         
+        # Aktualizuj dashboard
         self.dashboard_data['unrealized_pnl'] = total_unrealized
         self.dashboard_data['account_value'] = self.virtual_capital + total_unrealized
         self.dashboard_data['available_cash'] = self.virtual_balance
@@ -647,6 +418,7 @@ class QwenTradingBot:
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
+        """Sprawdza warunki wyjścia z pozycji"""
         positions_to_close = []
         
         for position_id, position in self.positions.items():
@@ -654,7 +426,7 @@ class QwenTradingBot:
                 continue
                 
             current_price = position.get('current_price', self.get_current_price(position['symbol']))
-            if current_price is None:
+            if not current_price:
                 continue
                 
             exit_reason = None
@@ -669,7 +441,7 @@ class QwenTradingBot:
                     exit_reason = "INVALIDATION"
                 elif current_price <= position['liquidation_price']:
                     exit_reason = "LIQUIDATION"
-            else:
+            else:  # SHORT
                 if current_price <= exit_plan['take_profit']:
                     exit_reason = "TAKE_PROFIT"
                 elif current_price >= exit_plan['stop_loss']:
@@ -679,6 +451,7 @@ class QwenTradingBot:
                 elif current_price >= position['liquidation_price']:
                     exit_reason = "LIQUIDATION"
             
+            # Sprawdź maksymalny czas holdingu
             holding_time = (datetime.now() - position['entry_time']).total_seconds() / 3600
             if holding_time > exit_plan['max_holding_hours']:
                 exit_reason = "TIME_EXPIRED"
@@ -689,6 +462,7 @@ class QwenTradingBot:
         return positions_to_close
 
     def close_position(self, position_id: str, exit_reason: str, exit_price: float):
+        """Zamyka pozycję"""
         position = self.positions[position_id]
         
         if position['side'] == 'LONG':
@@ -703,6 +477,7 @@ class QwenTradingBot:
         self.virtual_balance += position['margin'] + realized_pnl_after_fee
         self.virtual_capital += realized_pnl_after_fee
         
+        # Zapisz transakcję
         trade_record = {
             'position_id': position_id,
             'symbol': position['symbol'],
@@ -720,6 +495,8 @@ class QwenTradingBot:
         }
         
         self.trade_history.append(trade_record)
+        
+        # Aktualizuj statystyki
         self.stats['total_trades'] += 1
         self.stats['total_pnl'] += realized_pnl_after_fee
         
@@ -728,6 +505,7 @@ class QwenTradingBot:
         else:
             self.stats['losing_trades'] += 1
         
+        # Aktualizuj średni czas holdingu
         total_holding = sum((t['exit_time'] - t['entry_time']).total_seconds() 
                           for t in self.trade_history) / 3600
         self.stats['avg_holding_time'] = total_holding / len(self.trade_history) if self.trade_history else 0
@@ -735,11 +513,13 @@ class QwenTradingBot:
         position['status'] = 'CLOSED'
         self.dashboard_data['net_realized'] = self.stats['total_pnl']
         
+        # Logowanie
         margin_return = pnl_pct * self.leverage * 100
         pnl_color = "🟢" if realized_pnl_after_fee > 0 else "🔴"
         self.logger.info(f"{pnl_color} CLOSE: {position['symbol']} {position['side']} - P&L: ${realized_pnl_after_fee:+.2f} ({margin_return:+.1f}% margin) - Reason: {exit_reason}")
 
     def get_portfolio_diversity(self) -> float:
+        """Oblicza dywersyfikację portfela"""
         try:
             active_positions = [p for p in self.positions.values() if p['status'] == 'ACTIVE']
             if not active_positions:
@@ -749,6 +529,7 @@ class QwenTradingBot:
             if total_margin == 0:
                 return 0
             
+            # Wskaźnik Herfindahla
             concentration_index = sum((p['margin'] / total_margin) ** 2 for p in active_positions)
             diversity = 1 - concentration_index
             
@@ -759,6 +540,7 @@ class QwenTradingBot:
             return 0
 
     def get_dashboard_data(self):
+        """Przygotowuje dane dla dashboardu"""
         active_positions = []
         total_confidence = 0
         confidence_count = 0
@@ -766,18 +548,13 @@ class QwenTradingBot:
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
                 current_price = position.get('current_price', self.get_current_price(position['symbol']))
-                if current_price is None:
-                    continue
-                    
+                
                 if position['side'] == 'LONG':
                     pnl_pct = (current_price - position['entry_price']) / position['entry_price']
                     unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
                 else:
                     pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
                     unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
-                
-                tp_distance_pct = (position['exit_plan']['take_profit'] - current_price) / current_price * 100
-                sl_distance_pct = (current_price - position['exit_plan']['stop_loss']) / current_price * 100
                 
                 active_positions.append({
                     'position_id': position_id,
@@ -792,23 +569,22 @@ class QwenTradingBot:
                     'confidence': position['confidence'],
                     'llm_profile': position['llm_profile'],
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
-                    'exit_plan': position['exit_plan'],
-                    'tp_distance_pct': round(tp_distance_pct, 2),
-                    'sl_distance_pct': round(sl_distance_pct, 2)
+                    'exit_plan': position['exit_plan']
                 })
                 
                 total_confidence += position['confidence']
                 confidence_count += 1
         
-        # Confidence levels dla każdego assetu
+        # Oblicz confidence levels dla każdego assetu
         confidence_levels = {}
         for symbol in self.assets:
             try:
-                signal, confidence = self.generate_qwen_signal(symbol)
+                signal, confidence = self.generate_llm_signal(symbol)
                 confidence_levels[symbol] = round(confidence * 100, 1)
             except:
                 confidence_levels[symbol] = 0
         
+        # Ostatnie transakcje
         recent_trades = []
         for trade in self.trade_history[-10:]:
             recent_trades.append({
@@ -824,6 +600,7 @@ class QwenTradingBot:
                 'exit_time': trade['exit_time'].strftime('%H:%M:%S')
             })
         
+        # Metryki wydajności
         total_trades = self.stats['total_trades']
         win_rate = (self.stats['winning_trades'] / total_trades * 100) if total_trades > 0 else 0
         total_return_pct = ((self.dashboard_data['account_value'] - 10000) / 10000) * 100
@@ -847,8 +624,8 @@ class QwenTradingBot:
                 'avg_confidence': round(self.dashboard_data['average_confidence'] * 100, 1)
             },
             'llm_config': {
-                'active_profile': self.llm_profile,
-                'available_profiles': ['Qwen'],
+                'active_profile': self.active_profile,
+                'available_profiles': list(self.llm_profiles.keys()),
                 'max_positions': self.max_simultaneous_positions,
                 'leverage': self.leverage
             },
@@ -858,26 +635,26 @@ class QwenTradingBot:
             'last_update': self.dashboard_data['last_update'].isoformat()
         }
 
-    def run_qwen_trading_strategy(self):
-        """Główna pętla strategii Qwen3 z debugowaniem"""
-        self.logger.info("🚀 STARTING QWEN3 TRADING STRATEGY - DEBUG MODE")
+    def run_llm_trading_strategy(self):
+        """Główna pętla strategii LLM"""
+        self.logger.info("🚀 STARTING LLM-STYLE TRADING STRATEGY")
+        self.logger.info(f"🎯 Active Profile: {self.active_profile}")
         
         iteration = 0
         while self.is_running:
             try:
                 iteration += 1
-                self.logger.info(f"\n🔄 Qwen3 Trading Iteration #{iteration}")
+                self.logger.info(f"\n🔄 LLM Trading Iteration #{iteration}")
                 
-                # DEBUG: Co 3 iteracje pokaż status wszystkich symboli
-                if iteration % 3 == 0:
-                    self.debug_all_signals()
-                
+                # 1. Aktualizuj P&L
                 self.update_positions_pnl()
                 
+                # 2. Sprawdź warunki wyjścia
                 positions_to_close = self.check_exit_conditions()
                 for position_id, exit_reason, exit_price in positions_to_close:
                     self.close_position(position_id, exit_reason, exit_price)
                 
+                # 3. Sprawdź możliwości wejścia
                 active_symbols = [p['symbol'] for p in self.positions.values() 
                                 if p['status'] == 'ACTIVE']
                 active_count = len(active_symbols)
@@ -885,182 +662,32 @@ class QwenTradingBot:
                 if active_count < self.max_simultaneous_positions:
                     for symbol in self.assets:
                         if symbol not in active_symbols:
-                            position_id = self.open_qwen_position(symbol)
+                            position_id = self.open_llm_position(symbol)
                             if position_id:
-                                time.sleep(1)
+                                time.sleep(1)  # Krótka przerwa między pozycjami
                 
+                # 4. Loguj status
                 portfolio_value = self.dashboard_data['account_value']
                 self.logger.info(f"📊 Portfolio: ${portfolio_value:.2f} | Active Positions: {active_count}/{self.max_simultaneous_positions}")
                 
-                wait_time = random.randint(20, 40)  # Krótsze interwały dla debug
+                # 5. Odczekaj przed kolejną iteracją
+                wait_time = random.randint(30, 90)  # Losowy interwał 30-90 sekund
                 for i in range(wait_time):
                     if not self.is_running:
                         break
                     time.sleep(1)
                     
             except Exception as e:
-                self.logger.error(f"❌ Error in Qwen3 trading loop: {e}")
-                import traceback
-                self.logger.error(traceback.format_exc())
+                self.logger.error(f"❌ Error in LLM trading loop: {e}")
                 time.sleep(30)
 
     def start_trading(self):
+        """Rozpoczyna trading"""
         self.is_running = True
-        threading.Thread(target=self.run_qwen_trading_strategy, daemon=True).start()
-        self.logger.info("🚀 Qwen3 Trading Bot started")
+        threading.Thread(target=self.run_llm_trading_strategy, daemon=True).start()
+        self.logger.info("🚀 LLM Trading Bot started")
 
     def stop_trading(self):
+        """Zatrzymuje trading"""
         self.is_running = False
-        self.logger.info("🛑 Qwen3 Trading Bot stopped")
-
-# Globalna instancja bota
-qwen_trading_bot = QwenTradingBot(initial_capital=10000, leverage=10)
-
-# Flask app
-app = Flask(__name__)
-CORS(app)
-
-chart_data_storage = {
-    'labels': [],
-    'values': []
-}
-
-def load_chart_data_from_file():
-    try:
-        if os.path.exists('qwen_chart_data.json'):
-            with open('qwen_chart_data.json', 'r') as f:
-                data = json.load(f)
-                chart_data_storage.update(data)
-                print(f"✅ Loaded Qwen chart data: {len(data.get('labels', []))} points")
-    except Exception as e:
-        print(f"❌ Error loading Qwen chart data: {e}")
-
-load_chart_data_from_file()
-
-@app.route('/api/save-chart-data', methods=['POST'])
-def save_chart_data():
-    try:
-        data = request.get_json()
-        if data and 'labels' in data and 'values' in data:
-            chart_data_storage['labels'] = data['labels']
-            chart_data_storage['values'] = data['values']
-            
-            with open('qwen_chart_data.json', 'w') as f:
-                json.dump(chart_data_storage, f, indent=2)
-            
-            return jsonify({'status': 'success', 'message': f'Chart data saved: {len(data["labels"])} points'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Invalid data format'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/load-chart-data', methods=['GET'])
-def load_chart_data():
-    try:
-        load_chart_data_from_file()
-        return jsonify({
-            'status': 'success', 
-            'chartData': chart_data_storage
-        })
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
-@app.route('/api/trading-data', methods=['GET'])
-def get_trading_data():
-    try:
-        dashboard_data = qwen_trading_bot.get_dashboard_data()
-        
-        current_value = dashboard_data['account_summary']['total_value']
-        current_time = datetime.now().strftime('%H:%M:%S')
-        
-        should_add_point = False
-        if not chart_data_storage['values']:
-            should_add_point = True
-        else:
-            last_value = chart_data_storage['values'][-1]
-            if abs(current_value - last_value) >= 1.0:
-                should_add_point = True
-        
-        if should_add_point:
-            chart_data_storage['labels'].append(current_time)
-            chart_data_storage['values'].append(current_value)
-            
-            if len(chart_data_storage['labels']) > 100:
-                chart_data_storage['labels'] = chart_data_storage['labels'][-100:]
-                chart_data_storage['values'] = chart_data_storage['values'][-100:]
-            
-            try:
-                with open('qwen_chart_data.json', 'w') as f:
-                    json.dump(chart_data_storage, f, indent=2)
-            except Exception as e:
-                print(f"❌ Error auto-saving chart data: {e}")
-        
-        return jsonify(dashboard_data)
-    except Exception as e:
-        return jsonify({'error': str(e)})
-
-@app.route('/api/bot-status', methods=['GET'])
-def get_bot_status():
-    return jsonify({
-        'status': 'running' if qwen_trading_bot.is_running else 'stopped',
-        'capital': qwen_trading_bot.virtual_capital,
-        'active_positions': len([p for p in qwen_trading_bot.positions.values() if p['status'] == 'ACTIVE']),
-        'active_profile': qwen_trading_bot.llm_profile
-    })
-
-@app.route('/api/start-bot', methods=['POST'])
-def start_bot():
-    try:
-        if not qwen_trading_bot.is_running:
-            qwen_trading_bot.start_trading()
-            return jsonify({'status': 'Qwen3 Bot started successfully'})
-        else:
-            return jsonify({'status': 'Qwen3 Bot is already running'})
-    except Exception as e:
-        return jsonify({'status': f'Error starting Qwen3 bot: {str(e)}'})
-
-@app.route('/api/stop-bot', methods=['POST'])
-def stop_bot():
-    try:
-        qwen_trading_bot.stop_trading()
-        return jsonify({'status': 'Qwen3 Bot stopped successfully'})
-    except Exception as e:
-        return jsonify({'status': f'Error stopping Qwen3 bot: {str(e)}'})
-
-@app.route('/api/debug-signals', methods=['POST'])
-def debug_signals():
-    """Endpoint do ręcznego debugowania sygnałów"""
-    try:
-        qwen_trading_bot.debug_all_signals()
-        return jsonify({'status': 'Debug signals completed'})
-    except Exception as e:
-        return jsonify({'status': f'Error debugging signals: {str(e)}'})
-
-@app.route('/api/debug-prices', methods=['POST'])
-def debug_prices():
-    """Endpoint do ręcznego debugowania cen"""
-    try:
-        qwen_trading_bot.debug_price_apis()
-        return jsonify({'status': 'Debug prices completed'})
-    except Exception as e:
-        return jsonify({'status': f'Error debugging prices: {str(e)}'})
-
-@app.route('/api/force-update', methods=['POST'])
-def force_update():
-    try:
-        qwen_trading_bot.update_positions_pnl()
-        return jsonify({'status': 'Data updated successfully'})
-    except Exception as e:
-        return jsonify({'status': f'Error updating data: {str(e)}'})
-
-if __name__ == '__main__':
-    print("🚀 Starting Qwen3 Trading Bot - DEBUG MODE")
-    print("📍 Dashboard available at: http://localhost:5000")
-    print("🐛 Debug endpoints: /api/debug-signals, /api/debug-prices")
-    
-    # Uruchom testy API przy starcie
-    qwen_trading_bot.debug_price_apis()
-    time.sleep(2)
-    qwen_trading_bot.debug_all_signals()
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        self.logger.info("🛑 LLM Trading Bot stopped")
