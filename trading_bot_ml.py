@@ -17,7 +17,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('qwen_trading_bot.log', encoding='utf-8')
+        logging.FileHandler('qwen_trading_bot_debug.log', encoding='utf-8')
     ]
 )
 
@@ -37,7 +37,7 @@ class QwenTradingBot:
         self.llm_profile = 'Qwen'
         
         # PARAMETRY OPERACYJNE
-        self.max_simultaneous_positions = 4
+        self.max_simultaneous_positions = 6  # Zwiększone dla testów
         self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']
         
         # STATYSTYKI
@@ -64,17 +64,171 @@ class QwenTradingBot:
             'average_confidence': 0,
             'portfolio_diversity': 0,
             'last_update': datetime.now(),
-            'active_profile': self.llm_profile  # ZAWSZE Qwen
+            'active_profile': self.llm_profile
         }
         
-        self.logger.info("🧠 QWEN3 TRADING BOT - AUTO MODE")
+        self.logger.info("🧠 QWEN3 TRADING BOT - DEBUG MODE")
         self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
         self.logger.info("🎯 Profile: Qwen3 (Fixed - No Switching)")
+
+    def debug_price_apis(self):
+        """Testuje wszystkie API cenowe i pokazuje które działają"""
+        print("\n" + "="*60)
+        print("🧪 DEBUG: TESTING ALL PRICE APIs")
+        print("="*60)
+        
+        for symbol in self.assets:
+            print(f"\n🔍 Testing {symbol}:")
+            
+            # Test Binance
+            try:
+                url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    price = float(response.json()['price'])
+                    print(f"  ✅ Binance: ${price:,.2f}")
+                else:
+                    print(f"  ❌ Binance: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"  ❌ Binance: {str(e)[:50]}...")
+            
+            # Test KuCoin
+            try:
+                kucoin_symbol = symbol.replace('USDT', '-USDT')
+                url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_symbol}"
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('code') == '200000':
+                        price = float(data['data']['price'])
+                        print(f"  ✅ KuCoin: ${price:,.2f}")
+                    else:
+                        print(f"  ❌ KuCoin: {data.get('msg', 'Unknown error')}")
+                else:
+                    print(f"  ❌ KuCoin: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"  ❌ KuCoin: {str(e)[:50]}...")
+            
+            # Test CoinGecko
+            try:
+                coin_id = self.symbol_to_coingecko(symbol)
+                if coin_id:
+                    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+                    response = requests.get(url, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if coin_id in data:
+                            price = data[coin_id]['usd']
+                            print(f"  ✅ CoinGecko: ${price:,.2f}")
+                        else:
+                            print(f"  ❌ CoinGecko: Coin not found")
+                    else:
+                        print(f"  ❌ CoinGecko: HTTP {response.status_code}")
+                else:
+                    print(f"  ❌ CoinGecko: No mapping for {symbol}")
+            except Exception as e:
+                print(f"  ❌ CoinGecko: {str(e)[:50]}...")
+            
+            # Test metody bota
+            bot_price = self.get_current_price(symbol)
+            if bot_price:
+                print(f"  🤖 BOT FINAL PRICE: ${bot_price:,.2f}")
+            else:
+                print(f"  🚨 BOT: NO PRICE AVAILABLE")
+        
+        print("\n" + "="*60)
+        print("🧪 PRICE API TEST COMPLETED")
+        print("="*60)
+
+    def debug_signal_generation(self, symbol: str):
+        """Debuguje generowanie sygnałów i pokazuje dlaczego nie otwiera pozycji"""
+        print(f"\n🔍 DEBUG SIGNAL FOR {symbol}:")
+        
+        # 1. Sprawdź cenę
+        current_price = self.get_current_price(symbol)
+        print(f"   💰 Current Price: ${current_price if current_price else 'FAILED'}")
+        
+        if current_price is None:
+            print("   🚨 REASON: Cannot get current price")
+            return []
+        
+        # 2. Sprawdź momentum i volume
+        momentum = self.analyze_simple_momentum(symbol)
+        volume_active = self.check_volume_activity(symbol)
+        print(f"   📈 Momentum: {momentum:.4%}")
+        print(f"   📊 Volume Active: {volume_active}")
+        
+        # 3. Sprawdź sygnał
+        signal, confidence = self.generate_qwen_signal(symbol)
+        print(f"   🎯 Signal: {signal}")
+        print(f"   ✅ Confidence: {confidence:.1%}")
+        
+        # 4. Sprawdź warunki wejścia
+        conditions = []
+        
+        # Warunek 1: Sygnał nie może być HOLD
+        if signal == "HOLD":
+            conditions.append("Signal is HOLD")
+        
+        # Warunek 2: Confidence >= 0.4
+        if confidence < 0.4:
+            conditions.append(f"Confidence too low ({confidence:.1%} < 40%)")
+        
+        # Warunek 3: Momentum i volume
+        momentum_condition_met = (momentum > 0.01 and volume_active) or (momentum < -0.01 and volume_active)
+        if not momentum_condition_met:
+            conditions.append(f"Momentum/volume conditions not met (momentum: {momentum:.4%}, volume: {volume_active})")
+        
+        # Warunek 4: Random check
+        if not self.should_enter_trade():
+            conditions.append("Random entry check failed")
+        
+        # Warunek 5: Max positions
+        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
+        if active_count >= self.max_simultaneous_positions:
+            conditions.append(f"Max positions reached ({active_count}/{self.max_simultaneous_positions})")
+        
+        # Warunek 6: Margin
+        quantity, position_value, margin_required = self.calculate_qwen_position_size(symbol, current_price, confidence)
+        print(f"   💵 Position Value: ${position_value:.2f}")
+        print(f"   📦 Margin Required: ${margin_required:.2f}")
+        print(f"   💰 Available Balance: ${self.virtual_balance:.2f}")
+        
+        if margin_required > self.virtual_balance:
+            conditions.append(f"Insufficient margin (Required: ${margin_required:.2f}, Available: ${self.virtual_balance:.2f})")
+        
+        # Wyświetl przyczyny
+        if conditions:
+            print("   🚨 BLOCKED BY:")
+            for condition in conditions:
+                print(f"      • {condition}")
+        else:
+            print("   ✅ READY TO OPEN POSITION!")
+            print(f"   📊 Would open: {quantity:.6f} {symbol} @ ${current_price:.2f}")
+        
+        return conditions
+
+    def debug_all_signals(self):
+        """Debuguje wszystkie symbole na raz"""
+        print("\n" + "="*60)
+        print("🧪 DEBUG: CHECKING ALL SYMBOLS")
+        print("="*60)
+        
+        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
+        print(f"📊 Active Positions: {active_count}/{self.max_simultaneous_positions}")
+        print(f"💰 Available Balance: ${self.virtual_balance:.2f}")
+        
+        for symbol in self.assets:
+            self.debug_signal_generation(symbol)
+        
+        print("\n" + "="*60)
+        print("🧪 SIGNAL DEBUG COMPLETED")
+        print("="*60)
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """Pobiera RZECZYWISTE ceny tylko z API"""
         try:
-            # 1. Binance API
+            # 1. GŁÓWNE ŹRÓDŁO: Binance API
             url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
             response = requests.get(url, timeout=5)
             
@@ -88,7 +242,7 @@ class QwenTradingBot:
             self.logger.warning(f"Binance failed for {symbol}: {e}")
         
         try:
-            # 2. KuCoin API
+            # 2. BACKUP: KuCoin API
             kucoin_symbol = symbol.replace('USDT', '-USDT')
             url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_symbol}"
             response = requests.get(url, timeout=5)
@@ -104,7 +258,7 @@ class QwenTradingBot:
             self.logger.warning(f"KuCoin failed: {e}")
         
         try:
-            # 3. CoinGecko API
+            # 3. OSTATECZNY FALLBACK: CoinGecko API
             coin_id = self.symbol_to_coingecko(symbol)
             if coin_id:
                 url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
@@ -368,12 +522,20 @@ class QwenTradingBot:
 
     def should_enter_trade(self) -> bool:
         """Qwen3 - WYSOKA CZĘSTOTLIWOŚĆ TRADINGU"""
-        frequency_chance = 0.7  # 70% szans na transakcję
+        frequency_chance = 0.9  # 90% szans na transakcję (zwiększone dla debug)
         return random.random() < frequency_chance
 
     def open_qwen_position(self, symbol: str):
-        """Otwiera pozycję w stylu Qwen3"""
+        """Otwiera pozycję w stylu Qwen3 z debugowaniem"""
+        # DEBUG: Sprawdź dlaczego nie wchodzi
+        debug_conditions = self.debug_signal_generation(symbol)
+        
+        if debug_conditions:  # Jeśli są jakieś blokady
+            self.logger.info(f"⏹️ Position blocked for {symbol}: {debug_conditions}")
+            return None
+            
         if not self.should_enter_trade():
+            self.logger.info(f"🎲 Random check failed for {symbol}")
             return None
             
         current_price = self.get_current_price(symbol)
@@ -382,11 +544,13 @@ class QwenTradingBot:
             return None
             
         signal, confidence = self.generate_qwen_signal(symbol)
-        if signal == "HOLD" or confidence < 0.4:  # Wyższy próg dla Qwena
+        if signal == "HOLD" or confidence < 0.4:
+            self.logger.info(f"⏹️ Signal blocked: {symbol} -> {signal} (Conf: {confidence:.1%})")
             return None
             
         active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
         if active_positions >= self.max_simultaneous_positions:
+            self.logger.info(f"📦 Max positions: {active_count}/{self.max_simultaneous_positions}")
             return None
             
         quantity, position_value, margin_required = self.calculate_qwen_position_size(
@@ -394,7 +558,7 @@ class QwenTradingBot:
         )
         
         if margin_required > self.virtual_balance:
-            self.logger.warning(f"💰 Insufficient balance for {symbol}")
+            self.logger.warning(f"💰 Insufficient balance: ${margin_required:.2f} > ${self.virtual_balance:.2f}")
             return None
             
         exit_plan = self.calculate_qwen_exit_plan(current_price, confidence, signal)
@@ -419,7 +583,7 @@ class QwenTradingBot:
             'status': 'ACTIVE',
             'unrealized_pnl': 0,
             'confidence': confidence,
-            'llm_profile': self.llm_profile,  # ZAWSZE Qwen
+            'llm_profile': self.llm_profile,
             'exit_plan': exit_plan
         }
         
@@ -683,8 +847,8 @@ class QwenTradingBot:
                 'avg_confidence': round(self.dashboard_data['average_confidence'] * 100, 1)
             },
             'llm_config': {
-                'active_profile': self.llm_profile,  # ZAWSZE Qwen
-                'available_profiles': ['Qwen'],  # TYLKO Qwen
+                'active_profile': self.llm_profile,
+                'available_profiles': ['Qwen'],
                 'max_positions': self.max_simultaneous_positions,
                 'leverage': self.leverage
             },
@@ -695,15 +859,18 @@ class QwenTradingBot:
         }
 
     def run_qwen_trading_strategy(self):
-        """Główna pętla strategii Qwen3"""
-        self.logger.info("🚀 STARTING QWEN3 TRADING STRATEGY")
-        self.logger.info("🎯 Profile: Qwen3 (Auto Mode - No Switching)")
+        """Główna pętla strategii Qwen3 z debugowaniem"""
+        self.logger.info("🚀 STARTING QWEN3 TRADING STRATEGY - DEBUG MODE")
         
         iteration = 0
         while self.is_running:
             try:
                 iteration += 1
                 self.logger.info(f"\n🔄 Qwen3 Trading Iteration #{iteration}")
+                
+                # DEBUG: Co 3 iteracje pokaż status wszystkich symboli
+                if iteration % 3 == 0:
+                    self.debug_all_signals()
                 
                 self.update_positions_pnl()
                 
@@ -725,7 +892,7 @@ class QwenTradingBot:
                 portfolio_value = self.dashboard_data['account_value']
                 self.logger.info(f"📊 Portfolio: ${portfolio_value:.2f} | Active Positions: {active_count}/{self.max_simultaneous_positions}")
                 
-                wait_time = random.randint(20, 60)  # Krótsze interwały dla Qwena
+                wait_time = random.randint(20, 40)  # Krótsze interwały dla debug
                 for i in range(wait_time):
                     if not self.is_running:
                         break
@@ -733,71 +900,10 @@ class QwenTradingBot:
                     
             except Exception as e:
                 self.logger.error(f"❌ Error in Qwen3 trading loop: {e}")
+                import traceback
+                self.logger.error(traceback.format_exc())
                 time.sleep(30)
 
-    def debug_signal_generation(self, symbol: str):
-        """Debuguje generowanie sygnałów i pokazuje dlaczego nie otwiera pozycji"""
-        print(f"\n🔍 DEBUG SIGNAL FOR {symbol}:")
-        
-        # 1. Sprawdź cenę
-        current_price = self.get_current_price(symbol)
-        print(f"   💰 Current Price: ${current_price if current_price else 'FAILED'}")
-        
-        if current_price is None:
-            print("   🚨 REASON: Cannot get current price")
-            return
-        
-        # 2. Sprawdź momentum i volume
-        momentum = self.analyze_simple_momentum(symbol)
-        volume_active = self.check_volume_activity(symbol)
-        print(f"   📈 Momentum: {momentum:.4%}")
-        print(f"   📊 Volume Active: {volume_active}")
-        
-        # 3. Sprawdź sygnał
-        signal, confidence = self.generate_qwen_signal(symbol)
-        print(f"   🎯 Signal: {signal}")
-        print(f"   ✅ Confidence: {confidence:.1%}")
-        
-        # 4. Sprawdź warunki wejścia
-        conditions = []
-        
-        # Warunek 1: Sygnał nie może być HOLD
-        if signal == "HOLD":
-            conditions.append("Signal is HOLD")
-        
-        # Warunek 2: Confidence >= 0.4
-        if confidence < 0.4:
-            conditions.append(f"Confidence too low ({confidence:.1%} < 40%)")
-        
-        # Warunek 3: Momentum i volume
-        if not (momentum > 0.01 and volume_active) and not (momentum < -0.01 and volume_active):
-            conditions.append("Momentum/volume conditions not met")
-        
-        # Warunek 4: Random check
-        if not self.should_enter_trade():
-            conditions.append("Random entry check failed")
-        
-        # Warunek 5: Max positions
-        active_count = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
-        if active_count >= self.max_simultaneous_positions:
-            conditions.append(f"Max positions reached ({active_count}/{self.max_simultaneous_positions})")
-        
-        # Warunek 6: Margin
-        if current_price:
-            quantity, position_value, margin_required = self.calculate_qwen_position_size(symbol, current_price, confidence)
-            if margin_required > self.virtual_balance:
-                conditions.append(f"Insufficient margin (Required: ${margin_required:.2f}, Available: ${self.virtual_balance:.2f})")
-        
-        # Wyświetl przyczyny
-        if conditions:
-            print("   🚨 BLOCKED BY:")
-            for condition in conditions:
-                print(f"      • {condition}")
-        else:
-            print("   ✅ READY TO OPEN POSITION!")
-        
-        return conditions
-    
     def start_trading(self):
         self.is_running = True
         threading.Thread(target=self.run_qwen_trading_strategy, daemon=True).start()
@@ -899,7 +1005,7 @@ def get_bot_status():
         'status': 'running' if qwen_trading_bot.is_running else 'stopped',
         'capital': qwen_trading_bot.virtual_capital,
         'active_positions': len([p for p in qwen_trading_bot.positions.values() if p['status'] == 'ACTIVE']),
-        'active_profile': qwen_trading_bot.llm_profile  # ZAWSZE Qwen
+        'active_profile': qwen_trading_bot.llm_profile
     })
 
 @app.route('/api/start-bot', methods=['POST'])
@@ -921,7 +1027,23 @@ def stop_bot():
     except Exception as e:
         return jsonify({'status': f'Error stopping Qwen3 bot: {str(e)}'})
 
-# USUNIĘTY ENDPOINT DO ZMIANY PROFILU - NIE MA TAKIEJ MOŻLIWOŚCI
+@app.route('/api/debug-signals', methods=['POST'])
+def debug_signals():
+    """Endpoint do ręcznego debugowania sygnałów"""
+    try:
+        qwen_trading_bot.debug_all_signals()
+        return jsonify({'status': 'Debug signals completed'})
+    except Exception as e:
+        return jsonify({'status': f'Error debugging signals: {str(e)}'})
+
+@app.route('/api/debug-prices', methods=['POST'])
+def debug_prices():
+    """Endpoint do ręcznego debugowania cen"""
+    try:
+        qwen_trading_bot.debug_price_apis()
+        return jsonify({'status': 'Debug prices completed'})
+    except Exception as e:
+        return jsonify({'status': f'Error debugging prices: {str(e)}'})
 
 @app.route('/api/force-update', methods=['POST'])
 def force_update():
@@ -932,8 +1054,13 @@ def force_update():
         return jsonify({'status': f'Error updating data: {str(e)}'})
 
 if __name__ == '__main__':
-    print("🚀 Starting Qwen3 Trading Bot - AUTO MODE")
+    print("🚀 Starting Qwen3 Trading Bot - DEBUG MODE")
     print("📍 Dashboard available at: http://localhost:5000")
-    print("🧠 Profile: Qwen3 (Fixed - No Switching)")
-    print("💰 Data Sources: Binance → KuCoin → CoinGecko")
+    print("🐛 Debug endpoints: /api/debug-signals, /api/debug-prices")
+    
+    # Uruchom testy API przy starcie
+    qwen_trading_bot.debug_price_apis()
+    time.sleep(2)
+    qwen_trading_bot.debug_all_signals()
+    
     app.run(host='0.0.0.0', port=5000, debug=True)
