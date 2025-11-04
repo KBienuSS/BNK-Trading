@@ -7,15 +7,14 @@ from datetime import datetime, timedelta
 import random
 import requests
 
-# Zmieniam import na LLMTradingBot zamiast MLTradingBot
-from trading_bot_ml import LLMTradingBot
+# Zmieniamy import na QwenTradingBot
+from trading_bot_ml import QwenTradingBot
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Global bot instances
-trading_bot = None
-llm_trading_bot = None  # Zmieniam nazwę na llm_trading_bot
+# Global bot instance - tylko Qwen
+qwen_trading_bot = None
 bot_status = "stopped"
 
 class TradingData:
@@ -52,8 +51,8 @@ def index():
 
 @app.route('/api/trading-data')
 def get_trading_data():
-    if llm_trading_bot and bot_status == "running":  # Zmieniam na llm_trading_bot
-        return jsonify(llm_trading_bot.get_dashboard_data())
+    if qwen_trading_bot and bot_status == "running":
+        return jsonify(qwen_trading_bot.get_dashboard_data())
     else:
         return jsonify(trading_data.get_trading_data())
 
@@ -63,20 +62,20 @@ def get_bot_status():
 
 @app.route('/api/start-bot')
 def start_bot():
-    global bot_status, llm_trading_bot  # Zmieniam na llm_trading_bot
+    global bot_status, qwen_trading_bot
     try:
         if bot_status != "running":
-            # Start LLM bot
-            llm_trading_bot = LLMTradingBot()  # Używamy LLMTradingBot
+            # Start Qwen bot
+            qwen_trading_bot = QwenTradingBot()
             
             bot_thread = threading.Thread(target=run_bot)
             bot_thread.daemon = True
             bot_thread.start()
             
             bot_status = "running"
-            return jsonify({'status': 'LLM Bot started successfully'})
+            return jsonify({'status': 'Qwen3 Bot started successfully'})
         else:
-            return jsonify({'status': 'Bot is already running'})
+            return jsonify({'status': 'Qwen3 Bot is already running'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -85,50 +84,34 @@ def stop_bot():
     global bot_status
     try:
         if bot_status == "running":
-            if llm_trading_bot:  # Zmieniam na llm_trading_bot
-                llm_trading_bot.stop_trading()
+            if qwen_trading_bot:
+                qwen_trading_bot.stop_trading()
             
             bot_status = "stopped"
-            return jsonify({'status': 'Bot stopped successfully'})
+            return jsonify({'status': 'Qwen3 Bot stopped successfully'})
         else:
-            return jsonify({'status': 'Bot is not running'})
+            return jsonify({'status': 'Qwen3 Bot is not running'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/change-profile', methods=['POST'])
-def change_profile():
-    """Nowy endpoint do zmiany profilu LLM"""
-    try:
-        data = request.get_json()
-        profile_name = data.get('profile')
-        
-        if llm_trading_bot and llm_trading_bot.set_active_profile(profile_name):
-            return jsonify({'status': f'Profile changed to {profile_name}'})
-        else:
-            return jsonify({'status': 'Invalid profile name or bot not running'})
-    except Exception as e:
-        return jsonify({'status': f'Error changing profile: {str(e)}'})
 
 @app.route('/api/force-update')
 def force_update():
     try:
-        if llm_trading_bot:  # Zmieniam na llm_trading_bot
-            llm_trading_bot.update_positions_pnl()
         return jsonify({'status': 'Data updated successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 def run_bot():
-    """Run the trading bot in a separate thread"""
-    global llm_trading_bot  # Zmieniam na llm_trading_bot
+    """Run the Qwen trading bot in a separate thread"""
+    global qwen_trading_bot
     try:
-        logging.info("🧠 Starting LLM Trading Bot thread...")
-        if llm_trading_bot:
-            llm_trading_bot.start_trading()
+        logging.info("🤖 Starting Qwen3 Trading Bot thread...")
+        if qwen_trading_bot:
+            qwen_trading_bot.start_trading()
         else:
-            logging.error("❌ llm_trading_bot is None - cannot start trading")
+            logging.error("❌ qwen_trading_bot is None - cannot start trading")
     except Exception as e:
-        logging.error(f"❌ Error running LLM bot: {e}")
+        logging.error(f"❌ Error running Qwen3 bot: {e}")
         import traceback
         logging.error(traceback.format_exc())
 
