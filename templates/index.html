@@ -697,12 +697,19 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">BNK Trading - QWEN3 AUTO</div>
+            <div class="logo">BNK Trading - LLM Alpha Arena</div>
             <div class="header-right">
+                <div class="profile-selector">
+                    <button class="profile-btn claude" onclick="changeProfile('Claude')">Claude</button>
+                    <button class="profile-btn gemini" onclick="changeProfile('Gemini')">Gemini</button>
+                    <button class="profile-btn gpt" onclick="changeProfile('GPT')">GPT</button>
+                    <button class="profile-btn qwen" onclick="changeProfile('Qwen')">Qwen</button>
+                </div>
+                
                 <div class="controls">
                     <div class="live-indicator" id="status-indicator">LIVE</div>
-                    <button class="control-btn start" onclick="startBot()">▶ Start Qwen3</button>
-                    <button class="control-btn stop" onclick="stopBot()">⏹ Stop Qwen3</button>
+                    <button class="control-btn start" onclick="startBot()">▶ Start Bot</button>
+                    <button class="control-btn stop" onclick="stopBot()">⏹ Stop Bot</button>
                     <button class="control-btn" onclick="forceUpdate()">🔄 Update</button>
                 </div>
             </div>
