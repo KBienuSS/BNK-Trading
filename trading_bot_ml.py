@@ -34,12 +34,19 @@ class LLMTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
+        # API Binance - DOKŁADNIE TAKIE SAMO JAK WE FRONTENDZIE
+        self.binance_base_url = "https://api.binance.com/api/v3"
+        
+        # Cache cen - przechowujemy ostatnie ceny dla każdego symbolu
+        self.price_cache = {}
+        self.price_history = {}
+        
         # PROFIL ZACHOWANIA INSPIROWANY LLM (wg Alpha Arena)
         self.llm_profiles = {
             'Claude': {
                 'risk_appetite': 'MEDIUM',
                 'confidence_bias': 0.6,
-                'short_frequency': 0.1,  # Rzadko shortuje
+                'short_frequency': 0.1,
                 'holding_bias': 'LONG',
                 'trade_frequency': 'LOW',
                 'position_sizing': 'CONSERVATIVE'
@@ -70,7 +77,7 @@ class LLMTradingBot:
             }
         }
         
-        # AKTYWNY PROFIL (można zmieniać)
+        # AKTYWNY PROFIL
         self.active_profile = 'Claude'
         
         # PARAMETRY OPERACYJNE
@@ -104,96 +111,160 @@ class LLMTradingBot:
             'active_profile': self.active_profile
         }
         
+        # Dane wykresu
+        self.chart_data = {
+            'labels': [],
+            'values': []
+        }
+        
         self.logger.info("🧠 LLM-STYLE TRADING BOT - Alpha Arena Inspired")
         self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
         self.logger.info(f"🎯 Active LLM Profile: {self.active_profile}")
 
-    def get_current_profile(self):
-        """Zwraca aktywny profil LLM"""
-        return self.llm_profiles[self.active_profile]
-
-    def set_active_profile(self, profile_name: str):
-        """Zmienia aktywny profil zachowania"""
-        if profile_name in self.llm_profiles:
-            self.active_profile = profile_name
-            self.dashboard_data['active_profile'] = profile_name
-            self.logger.info(f"🔄 Changed LLM profile to: {profile_name}")
-            return True
-        return False
-
-    def get_current_price(self, symbol: str):
-        """Pobiera aktualną cenę - uproszczona wersja"""
+    def get_binance_price(self, symbol: str) -> Optional[float]:
+        """Pobiera aktualną cenę z API Binance - DOKŁADNIE TAK SAMO JAK WE FRONTENDZIE"""
         try:
-            # Symulacja ceny z lekkim szumem
-            base_prices = {
+            url = f"{self.binance_base_url}/ticker/price"
+            params = {'symbol': symbol}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            price = float(data['price'])
+            
+            # Zapisz w cache
+            self.price_cache[symbol] = {
+                'price': price,
+                'timestamp': datetime.now()
+            }
+            
+            # Zapisz w historii dla analizy
+            if symbol not in self.price_history:
+                self.price_history[symbol] = []
+            
+            self.price_history[symbol].append({
+                'price': price,
+                'timestamp': datetime.now()
+            })
+            
+            # Ogranicz historię do ostatnich 50 punktów
+            if len(self.price_history[symbol]) > 50:
+                self.price_history[symbol] = self.price_history[symbol][-50:]
+            
+            return price
+            
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"❌ API Error getting price for {symbol}: {e}")
+            # Fallback do cache jeśli dostępny
+            if symbol in self.price_cache:
+                cache_age = (datetime.now() - self.price_cache[symbol]['timestamp']).total_seconds()
+                if cache_age < 300:  # 5 minut
+                    self.logger.info(f"🔄 Using cached price for {symbol} (age: {cache_age:.1f}s)")
+                    return self.price_cache[symbol]['price']
+            
+            self.logger.warning(f"⚠️ Could not get price for {symbol}")
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Unexpected error getting price for {symbol}: {e}")
+            return None
+
+    def get_current_price(self, symbol: str) -> float:
+        """Pobiera aktualną cenę - GŁÓWNA FUNKCJA UŻYWAJĄCA TEGO SAMEGO API CO FRONTEND"""
+        price = self.get_binance_price(symbol)
+        
+        if price is None:
+            # Fallback tylko gdy API kompletnie nie działa
+            self.logger.warning(f"⚠️ Using fallback price for {symbol}")
+            fallback_prices = {
                 'BTCUSDT': 112614,
                 'ETHUSDT': 3485, 
                 'SOLUSDT': 178,
                 'XRPUSDT': 0.615,
                 'BNBUSDT': 582
             }
-            
-            base_price = base_prices.get(symbol, 100)
-            volatility = random.uniform(-0.002, 0.002)  # 0.2% szumu
-            current_price = base_price * (1 + volatility)
-            
-            return round(current_price, 4)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error getting price for {symbol}: {e}")
-            return base_prices.get(symbol, 100)
+            price = fallback_prices.get(symbol, 100)
+            # Dodaj minimalny szum aby uniknąć identycznych cen
+            price *= (1 + random.uniform(-0.001, 0.001))
+        
+        return round(price, 4)
 
     def analyze_simple_momentum(self, symbol: str) -> float:
-        """Prosta analiza momentum - zamiast skomplikowanych wskaźników"""
+        """Analiza momentum na podstawie rzeczywistych danych z API Binance"""
         try:
-            # Symulacja prostych danych historycznych
-            current_price = self.get_current_price(symbol)
+            # Użyj historii cen do obliczenia momentum
+            if symbol not in self.price_history or len(self.price_history[symbol]) < 2:
+                return random.uniform(-0.02, 0.02)
             
-            # Losowy momentum w zakresie -3% do +3%
-            momentum = random.uniform(-0.03, 0.03)
+            history = self.price_history[symbol]
+            current_price = history[-1]['price']
+            
+            # Oblicz momentum na podstawie ostatnich punktów
+            lookback = min(5, len(history) - 1)
+            past_price = history[-lookback]['price']
+            
+            momentum = (current_price - past_price) / past_price
+            
+            # Normalizuj momentum
+            momentum = max(min(momentum, 0.03), -0.03)
             
             return momentum
             
         except Exception as e:
             self.logger.error(f"❌ Error analyzing momentum for {symbol}: {e}")
-            return 0.0
+            return random.uniform(-0.02, 0.02)
 
     def check_volume_activity(self, symbol: str) -> bool:
-        """Prosty check aktywności wolumenu"""
-        # 70% szans na "aktywny" volume
-        return random.random() < 0.7
+        """Sprawdza aktywność wolumenu na podstawie zmienności cen z API Binance"""
+        try:
+            if symbol not in self.price_history or len(self.price_history[symbol]) < 10:
+                return random.random() < 0.6
+            
+            # Oblicz zmienność na podstawie rzeczywistej historii cen
+            prices = [entry['price'] for entry in self.price_history[symbol][-10:]]
+            volatility = np.std(prices) / np.mean(prices)
+            
+            # Wyższa zmienność = wyższa aktywność
+            return volatility > 0.002
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error checking volume activity for {symbol}: {e}")
+            return random.random() < 0.6
 
     def generate_llm_signal(self, symbol: str) -> Tuple[str, float]:
-        """Generuje sygnał w stylu LLM - proste reguły + element losowości"""
+        """Generuje sygnał w stylu LLM na podstawie rzeczywistych danych z API Binance"""
         profile = self.get_current_profile()
         
-        # Podstawowe obserwacje
+        # Podstawowe obserwacje na podstawie rzeczywistych cen
         momentum = self.analyze_simple_momentum(symbol)
         volume_active = self.check_volume_activity(symbol)
         
         # Confidence bazowe z profilu
         base_confidence = profile['confidence_bias']
         
-        # Modyfikatory confidence
+        # Modyfikatory confidence na podstawie rzeczywistych danych
         confidence_modifiers = 0
         
-        if momentum > 0.01:  # Pozytywny momentum
-            confidence_modifiers += 0.15
-        elif momentum < -0.01:  # Negatywny momentum  
+        if momentum > 0.008:  # Silny pozytywny momentum
+            confidence_modifiers += 0.2
+        elif momentum > 0.003:  # Umiarkowany pozytywny momentum
             confidence_modifiers += 0.1
+        elif momentum < -0.008:  # Silny negatywny momentum
+            confidence_modifiers += 0.15
+        elif momentum < -0.003:  # Umiarkowany negatywny momentum
+            confidence_modifiers += 0.08
             
         if volume_active:
             confidence_modifiers += 0.1
             
         # Final confidence z losowością
         final_confidence = min(base_confidence + confidence_modifiers + random.uniform(-0.1, 0.1), 0.95)
-        final_confidence = max(final_confidence, 0.1)  # Minimum 10%
+        final_confidence = max(final_confidence, 0.1)
         
-        # Decyzja o kierunku
-        if momentum > 0.015 and volume_active:
+        # Decyzja o kierunku na podstawie rzeczywistego momentum
+        if momentum > 0.01 and volume_active:
             signal = "LONG"
-        elif momentum < -0.015 and volume_active:
-            # Uwzględnij skłonność do shortowania z profilu
+        elif momentum < -0.01 and volume_active:
             if random.random() < profile['short_frequency']:
                 signal = "SHORT"
             else:
@@ -201,7 +272,8 @@ class LLMTradingBot:
         else:
             signal = "HOLD"
             
-        self.logger.info(f"🎯 {self.active_profile} SIGNAL: {symbol} -> {signal} (Conf: {final_confidence:.1%})")
+        current_price = self.get_current_price(symbol)
+        self.logger.info(f"🎯 {self.active_profile} SIGNAL: {symbol} -> {signal} (Price: ${current_price:.4f}, Conf: {final_confidence:.1%}, Mom: {momentum:.2%})")
         
         return signal, final_confidence
 
@@ -209,7 +281,6 @@ class LLMTradingBot:
         """Oblicza wielkość pozycji w stylu LLM"""
         profile = self.get_current_profile()
         
-        # Bazowa alokacja w zależności od profilu
         base_allocation = {
             'Claude': 0.15,
             'Gemini': 0.25, 
@@ -217,21 +288,17 @@ class LLMTradingBot:
             'Qwen': 0.30
         }.get(self.active_profile, 0.15)
         
-        # Modyfikator confidence
         confidence_multiplier = 0.5 + (confidence * 0.5)
         
-        # Modyfikator agresywności
         sizing_multiplier = {
             'CONSERVATIVE': 0.8,
             'AGGRESSIVE': 1.2,
             'VERY_AGGRESSIVE': 1.5
         }.get(profile['position_sizing'], 1.0)
         
-        # Oblicz wartość pozycji
         position_value = (self.virtual_capital * base_allocation * 
                          confidence_multiplier * sizing_multiplier)
         
-        # Limit maksymalnej pozycji
         max_position_value = self.virtual_capital * 0.4
         position_value = min(position_value, max_position_value)
         
@@ -244,29 +311,28 @@ class LLMTradingBot:
         """Oblicza plan wyjścia w stylu LLM"""
         profile = self.get_current_profile()
         
-        if confidence > 0.7:  # Wysoka confidence
+        if confidence > 0.7:
             if side == "LONG":
-                take_profit = entry_price * 1.018  # 1.8% TP
-                stop_loss = entry_price * 0.992    # 0.8% SL
-            else:  # SHORT
-                take_profit = entry_price * 0.982  # 1.8% TP
-                stop_loss = entry_price * 1.008    # 0.8% SL
-        elif confidence > 0.5:  # Średnia confidence
+                take_profit = entry_price * 1.018
+                stop_loss = entry_price * 0.992
+            else:
+                take_profit = entry_price * 0.982
+                stop_loss = entry_price * 1.008
+        elif confidence > 0.5:
             if side == "LONG":
-                take_profit = entry_price * 1.012  # 1.2% TP
-                stop_loss = entry_price * 0.994    # 0.6% SL
-            else:  # SHORT
-                take_profit = entry_price * 0.988  # 1.2% TP
-                stop_loss = entry_price * 1.006    # 0.6% SL
-        else:  # Niska confidence
+                take_profit = entry_price * 1.012
+                stop_loss = entry_price * 0.994
+            else:
+                take_profit = entry_price * 0.988
+                stop_loss = entry_price * 1.006
+        else:
             if side == "LONG":
-                take_profit = entry_price * 1.008  # 0.8% TP
-                stop_loss = entry_price * 0.996    # 0.4% SL
-            else:  # SHORT
-                take_profit = entry_price * 0.992  # 0.8% TP
-                stop_loss = entry_price * 1.004    # 0.4% SL
+                take_profit = entry_price * 1.008
+                stop_loss = entry_price * 0.996
+            else:
+                take_profit = entry_price * 0.992
+                stop_loss = entry_price * 1.004
         
-        # Modyfikuj wg profilu ryzyka
         risk_multiplier = {
             'LOW': 0.8,
             'MEDIUM': 1.0,
@@ -284,7 +350,7 @@ class LLMTradingBot:
             'take_profit': round(take_profit, 4),
             'stop_loss': round(stop_loss, 4),
             'invalidation': entry_price * 0.98 if side == "LONG" else entry_price * 1.02,
-            'max_holding_hours': random.randint(1, 6)  # Losowy czas holdingu
+            'max_holding_hours': random.randint(1, 6)
         }
 
     def should_enter_trade(self) -> bool:
@@ -292,32 +358,31 @@ class LLMTradingBot:
         profile = self.get_current_profile()
         
         frequency_chance = {
-            'LOW': 0.3,      # 30% szans na transakcję
-            'MEDIUM': 0.5,   # 50% szans
-            'HIGH': 0.7      # 70% szans
+            'LOW': 0.3,
+            'MEDIUM': 0.5,
+            'HIGH': 0.7
         }.get(profile['trade_frequency'], 0.5)
         
         return random.random() < frequency_chance
 
     def open_llm_position(self, symbol: str):
-        """Otwiera pozycję w stylu LLM"""
+        """Otwiera pozycję w stylu LLM używając rzeczywistych cen z API"""
         if not self.should_enter_trade():
             return None
             
         current_price = self.get_current_price(symbol)
         if not current_price:
+            self.logger.warning(f"❌ Could not get price for {symbol}")
             return None
             
         signal, confidence = self.generate_llm_signal(symbol)
         if signal == "HOLD" or confidence < 0.3:
             return None
             
-        # Sprawdź limit pozycji
         active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
         if active_positions >= self.max_simultaneous_positions:
             return None
             
-        # Oblicz wielkość pozycji
         quantity, position_value, margin_required = self.calculate_position_size(
             symbol, current_price, confidence
         )
@@ -326,10 +391,8 @@ class LLMTradingBot:
             self.logger.warning(f"💰 Insufficient balance for {symbol}")
             return None
             
-        # Oblicz plan wyjścia
         exit_plan = self.calculate_llm_exit_plan(current_price, confidence, signal)
         
-        # Cena likwidacji
         if signal == "LONG":
             liquidation_price = current_price * (1 - 0.9 / self.leverage)
         else:
@@ -357,13 +420,11 @@ class LLMTradingBot:
         self.positions[position_id] = position
         self.virtual_balance -= margin_required
         
-        # Statystyki
         if signal == "LONG":
             self.stats['long_trades'] += 1
         else:
             self.stats['short_trades'] += 1
         
-        # Logowanie
         tp_distance = (exit_plan['take_profit'] - current_price) / current_price * 100
         sl_distance = (current_price - exit_plan['stop_loss']) / current_price * 100
         
@@ -375,7 +436,7 @@ class LLMTradingBot:
         return position_id
 
     def update_positions_pnl(self):
-        """Aktualizuje P&L wszystkich pozycji"""
+        """Aktualizuje P&L wszystkich pozycji używając rzeczywistych cen z API"""
         total_unrealized = 0
         total_margin = 0
         total_confidence = 0
@@ -392,7 +453,7 @@ class LLMTradingBot:
             if position['side'] == 'LONG':
                 pnl_pct = (current_price - position['entry_price']) / position['entry_price']
                 unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
-            else:  # SHORT
+            else:
                 pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
                 unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
             
@@ -404,7 +465,6 @@ class LLMTradingBot:
             total_confidence += position['confidence']
             confidence_count += 1
         
-        # Aktualizuj dashboard
         self.dashboard_data['unrealized_pnl'] = total_unrealized
         self.dashboard_data['account_value'] = self.virtual_capital + total_unrealized
         self.dashboard_data['available_cash'] = self.virtual_balance
@@ -418,7 +478,7 @@ class LLMTradingBot:
         self.dashboard_data['last_update'] = datetime.now()
 
     def check_exit_conditions(self):
-        """Sprawdza warunki wyjścia z pozycji"""
+        """Sprawdza warunki wyjścia z pozycji używając rzeczywistych cen z API"""
         positions_to_close = []
         
         for position_id, position in self.positions.items():
@@ -441,7 +501,7 @@ class LLMTradingBot:
                     exit_reason = "INVALIDATION"
                 elif current_price <= position['liquidation_price']:
                     exit_reason = "LIQUIDATION"
-            else:  # SHORT
+            else:
                 if current_price <= exit_plan['take_profit']:
                     exit_reason = "TAKE_PROFIT"
                 elif current_price >= exit_plan['stop_loss']:
@@ -451,7 +511,6 @@ class LLMTradingBot:
                 elif current_price >= position['liquidation_price']:
                     exit_reason = "LIQUIDATION"
             
-            # Sprawdź maksymalny czas holdingu
             holding_time = (datetime.now() - position['entry_time']).total_seconds() / 3600
             if holding_time > exit_plan['max_holding_hours']:
                 exit_reason = "TIME_EXPIRED"
@@ -477,7 +536,6 @@ class LLMTradingBot:
         self.virtual_balance += position['margin'] + realized_pnl_after_fee
         self.virtual_capital += realized_pnl_after_fee
         
-        # Zapisz transakcję
         trade_record = {
             'position_id': position_id,
             'symbol': position['symbol'],
@@ -496,7 +554,6 @@ class LLMTradingBot:
         
         self.trade_history.append(trade_record)
         
-        # Aktualizuj statystyki
         self.stats['total_trades'] += 1
         self.stats['total_pnl'] += realized_pnl_after_fee
         
@@ -505,7 +562,6 @@ class LLMTradingBot:
         else:
             self.stats['losing_trades'] += 1
         
-        # Aktualizuj średni czas holdingu
         total_holding = sum((t['exit_time'] - t['entry_time']).total_seconds() 
                           for t in self.trade_history) / 3600
         self.stats['avg_holding_time'] = total_holding / len(self.trade_history) if self.trade_history else 0
@@ -513,7 +569,6 @@ class LLMTradingBot:
         position['status'] = 'CLOSED'
         self.dashboard_data['net_realized'] = self.stats['total_pnl']
         
-        # Logowanie
         margin_return = pnl_pct * self.leverage * 100
         pnl_color = "🟢" if realized_pnl_after_fee > 0 else "🔴"
         self.logger.info(f"{pnl_color} CLOSE: {position['symbol']} {position['side']} - P&L: ${realized_pnl_after_fee:+.2f} ({margin_return:+.1f}% margin) - Reason: {exit_reason}")
@@ -529,7 +584,6 @@ class LLMTradingBot:
             if total_margin == 0:
                 return 0
             
-            # Wskaźnik Herfindahla
             concentration_index = sum((p['margin'] / total_margin) ** 2 for p in active_positions)
             diversity = 1 - concentration_index
             
@@ -539,14 +593,27 @@ class LLMTradingBot:
             self.logger.error(f"❌ Error calculating portfolio diversity: {e}")
             return 0
 
+    def get_current_profile(self):
+        """Zwraca aktywny profil LLM"""
+        return self.llm_profiles[self.active_profile]
+
+    def set_active_profile(self, profile_name: str):
+        """Zmienia aktywny profil zachowania"""
+        if profile_name in self.llm_profiles:
+            self.active_profile = profile_name
+            self.dashboard_data['active_profile'] = profile_name
+            self.logger.info(f"🔄 Changed LLM profile to: {profile_name}")
+            return True
+        return False
+
     def get_dashboard_data(self):
-        """Przygotowuje dane dla dashboardu"""
+        """Przygotowuje dane dla dashboardu używając rzeczywistych cen z API"""
         active_positions = []
-        total_confidence = 0
-        confidence_count = 0
+        total_unrealized_pnl = 0
         
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
+                # UŻYJ RZECZYWISTEJ CENY Z API BINANCE
                 current_price = position.get('current_price', self.get_current_price(position['symbol']))
                 
                 if position['side'] == 'LONG':
@@ -555,6 +622,14 @@ class LLMTradingBot:
                 else:
                     pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
                     unrealized_pnl = pnl_pct * position['quantity'] * position['entry_price'] * position['leverage']
+                
+                # Oblicz odległości do TP/SL
+                if position['side'] == 'LONG':
+                    tp_distance_pct = ((position['exit_plan']['take_profit'] - current_price) / current_price) * 100
+                    sl_distance_pct = ((current_price - position['exit_plan']['stop_loss']) / current_price) * 100
+                else:
+                    tp_distance_pct = ((current_price - position['exit_plan']['take_profit']) / current_price) * 100
+                    sl_distance_pct = ((position['exit_plan']['stop_loss'] - current_price) / current_price) * 100
                 
                 active_positions.append({
                     'position_id': position_id,
@@ -569,13 +644,14 @@ class LLMTradingBot:
                     'confidence': position['confidence'],
                     'llm_profile': position['llm_profile'],
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
-                    'exit_plan': position['exit_plan']
+                    'exit_plan': position['exit_plan'],
+                    'tp_distance_pct': tp_distance_pct,
+                    'sl_distance_pct': sl_distance_pct
                 })
                 
-                total_confidence += position['confidence']
-                confidence_count += 1
+                total_unrealized_pnl += unrealized_pnl
         
-        # Oblicz confidence levels dla każdego assetu
+        # Oblicz confidence levels dla każdego assetu UŻYWAJĄC RZECZYWISTYCH CEN
         confidence_levels = {}
         for symbol in self.assets:
             try:
@@ -632,11 +708,25 @@ class LLMTradingBot:
             'confidence_levels': confidence_levels,
             'active_positions': active_positions,
             'recent_trades': recent_trades,
+            'total_unrealized_pnl': total_unrealized_pnl,
             'last_update': self.dashboard_data['last_update'].isoformat()
         }
 
+    def save_chart_data(self, chart_data: Dict):
+        """Zapisuje dane wykresu"""
+        try:
+            self.chart_data = chart_data
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Error saving chart data: {e}")
+            return False
+
+    def load_chart_data(self) -> Dict:
+        """Ładuje dane wykresu"""
+        return self.chart_data
+
     def run_llm_trading_strategy(self):
-        """Główna pętla strategii LLM"""
+        """Główna pętla strategii LLM używająca rzeczywistych cen z API"""
         self.logger.info("🚀 STARTING LLM-STYLE TRADING STRATEGY")
         self.logger.info(f"🎯 Active Profile: {self.active_profile}")
         
@@ -646,7 +736,7 @@ class LLMTradingBot:
                 iteration += 1
                 self.logger.info(f"\n🔄 LLM Trading Iteration #{iteration}")
                 
-                # 1. Aktualizuj P&L
+                # 1. Aktualizuj P&L używając rzeczywistych cen
                 self.update_positions_pnl()
                 
                 # 2. Sprawdź warunki wyjścia
@@ -664,14 +754,12 @@ class LLMTradingBot:
                         if symbol not in active_symbols:
                             position_id = self.open_llm_position(symbol)
                             if position_id:
-                                time.sleep(1)  # Krótka przerwa między pozycjami
+                                time.sleep(1)
                 
-                # 4. Loguj status
                 portfolio_value = self.dashboard_data['account_value']
                 self.logger.info(f"📊 Portfolio: ${portfolio_value:.2f} | Active Positions: {active_count}/{self.max_simultaneous_positions}")
                 
-                # 5. Odczekaj przed kolejną iteracją
-                wait_time = random.randint(30, 90)  # Losowy interwał 30-90 sekund
+                wait_time = random.randint(30, 90)
                 for i in range(wait_time):
                     if not self.is_running:
                         break
@@ -691,3 +779,101 @@ class LLMTradingBot:
         """Zatrzymuje trading"""
         self.is_running = False
         self.logger.info("🛑 LLM Trading Bot stopped")
+
+
+# FLASK APP
+app = Flask(__name__)
+CORS(app)
+
+# Inicjalizacja bota
+trading_bot = LLMTradingBot(initial_capital=10000, leverage=10)
+
+@app.route('/')
+def index():
+    return "LLM Trading Bot API is running!"
+
+@app.route('/api/trading-data')
+def get_trading_data():
+    """Zwraca dane tradingowe dla dashboardu"""
+    try:
+        data = trading_bot.get_dashboard_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/bot-status')
+def get_bot_status():
+    """Zwraca status bota"""
+    status = 'running' if trading_bot.is_running else 'stopped'
+    return jsonify({'status': status})
+
+@app.route('/api/start-bot', methods=['POST'])
+def start_bot():
+    """Uruchamia bota"""
+    try:
+        trading_bot.start_trading()
+        return jsonify({'status': 'Bot started successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stop-bot', methods=['POST'])
+def stop_bot():
+    """Zatrzymuje bota"""
+    try:
+        trading_bot.stop_trading()
+        return jsonify({'status': 'Bot stopped successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/change-profile', methods=['POST'])
+def change_profile():
+    """Zmienia profil LLM"""
+    try:
+        data = request.get_json()
+        profile_name = data.get('profile')
+        
+        if trading_bot.set_active_profile(profile_name):
+            return jsonify({'status': f'Profile changed to {profile_name}'})
+        else:
+            return jsonify({'error': 'Invalid profile name'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/force-update', methods=['POST'])
+def force_update():
+    """Wymusza aktualizację danych"""
+    try:
+        trading_bot.update_positions_pnl()
+        return jsonify({'status': 'Data updated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save-chart-data', methods=['POST'])
+def save_chart_data():
+    """Zapisuje dane wykresu"""
+    try:
+        data = request.get_json()
+        if trading_bot.save_chart_data(data):
+            return jsonify({'status': 'success'})
+        else:
+            return jsonify({'error': 'Failed to save chart data'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/load-chart-data')
+def load_chart_data():
+    """Ładuje dane wykresu"""
+    try:
+        chart_data = trading_bot.load_chart_data()
+        return jsonify({
+            'status': 'success',
+            'chartData': chart_data
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    print("🚀 Starting LLM Trading Bot Server...")
+    print("📍 Dashboard available at: http://localhost:5000")
+    print("🧠 LLM Profiles: Claude, Gemini, GPT, Qwen")
+    app.run(debug=True, host='0.0.0.0', port=5000)
