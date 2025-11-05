@@ -80,9 +80,9 @@ class LLMTradingBot:
         # AKTYWNY PROFIL
         self.active_profile = 'Claude'
         
-        # PARAMETRY OPERACYJNE - DODANO DOGEUSDT
+        # PARAMETRY OPERACYJNE
         self.max_simultaneous_positions = 4
-        self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT']  # DODANO DOGE
+        self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT']
         
         # STATYSTYKI
         self.stats = {
@@ -123,7 +123,7 @@ class LLMTradingBot:
         self.logger.info(f"📈 Trading assets: {', '.join(self.assets)}")
 
     def get_binance_price(self, symbol: str) -> Optional[float]:
-        """Pobiera aktualną cenę z API Binance"""
+        """Pobiera aktualną cenę z API Binance - JEDYNE ŹRÓDŁO CEN"""
         try:
             url = f"{self.binance_base_url}/ticker/price"
             params = {'symbol': symbol}
@@ -157,39 +157,22 @@ class LLMTradingBot:
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"❌ API Error getting price for {symbol}: {e}")
-            # Fallback do cache jeśli dostępny
+            # Tylko cache jako fallback - BRAK STAŁYCH CEN
             if symbol in self.price_cache:
                 cache_age = (datetime.now() - self.price_cache[symbol]['timestamp']).total_seconds()
                 if cache_age < 300:  # 5 minut
                     self.logger.info(f"🔄 Using cached price for {symbol} (age: {cache_age:.1f}s)")
                     return self.price_cache[symbol]['price']
             
-            self.logger.warning(f"⚠️ Could not get price for {symbol}")
+            self.logger.warning(f"⚠️ Could not get price for {symbol} and no recent cache")
             return None
         except Exception as e:
             self.logger.error(f"❌ Unexpected error getting price for {symbol}: {e}")
             return None
 
-    def get_current_price(self, symbol: str) -> float:
-        """Pobiera aktualną cenę - GŁÓWNA FUNKCJA UŻYWAJĄCA API BINANCE"""
-        price = self.get_binance_price(symbol)
-        
-        if price is None:
-            # Fallback tylko gdy API kompletnie nie działa - DODANO DOGE
-            self.logger.warning(f"⚠️ Using fallback price for {symbol}")
-            fallback_prices = {
-                'BTCUSDT': 112614,
-                'ETHUSDT': 3485, 
-                'SOLUSDT': 178,
-                'XRPUSDT': 0.615,
-                'BNBUSDT': 582,
-                'DOGEUSDT': 0.15  # DODANO FALLBACK DLA DOGE
-            }
-            price = fallback_prices.get(symbol, 100)
-            # Dodaj minimalny szum aby uniknąć identycznych cen
-            price *= (1 + random.uniform(-0.001, 0.001))
-        
-        return round(price, 4)
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        """Pobiera aktualną cenę - WYŁĄCZNIE Z API BINANCE"""
+        return self.get_binance_price(symbol)
 
     def analyze_simple_momentum(self, symbol: str) -> float:
         """Analiza momentum na podstawie rzeczywistych danych z API Binance"""
@@ -275,7 +258,8 @@ class LLMTradingBot:
             signal = "HOLD"
             
         current_price = self.get_current_price(symbol)
-        self.logger.info(f"🎯 {self.active_profile} SIGNAL: {symbol} -> {signal} (Price: ${current_price:.4f}, Conf: {final_confidence:.1%}, Mom: {momentum:.2%})")
+        price_display = f"${current_price:.4f}" if current_price else "N/A"
+        self.logger.info(f"🎯 {self.active_profile} SIGNAL: {symbol} -> {signal} (Price: {price_display}, Conf: {final_confidence:.1%}, Mom: {momentum:.2%})")
         
         return signal, final_confidence
 
@@ -374,7 +358,7 @@ class LLMTradingBot:
             
         current_price = self.get_current_price(symbol)
         if not current_price:
-            self.logger.warning(f"❌ Could not get price for {symbol}")
+            self.logger.warning(f"❌ Could not get price for {symbol} - skipping trade")
             return None
             
         signal, confidence = self.generate_llm_signal(symbol)
@@ -616,6 +600,8 @@ class LLMTradingBot:
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
                 current_price = position.get('current_price', self.get_current_price(position['symbol']))
+                if not current_price:
+                    continue
                 
                 if position['side'] == 'LONG':
                     pnl_pct = (current_price - position['entry_price']) / position['entry_price']
@@ -652,7 +638,7 @@ class LLMTradingBot:
                 
                 total_unrealized_pnl += unrealized_pnl
         
-        # Oblicz confidence levels dla każdego assetu - DODANO DOGE
+        # Oblicz confidence levels dla każdego assetu
         confidence_levels = {}
         for symbol in self.assets:
             try:
@@ -878,4 +864,5 @@ if __name__ == '__main__':
     print("📍 Dashboard available at: http://localhost:5000")
     print("🧠 LLM Profiles: Claude, Gemini, GPT, Qwen")
     print("📈 Trading assets: BTC, ETH, SOL, XRP, BNB, DOGE")
+    print("💹 Using REAL-TIME prices from Binance API only")
     app.run(debug=True, host='0.0.0.0', port=5000)
