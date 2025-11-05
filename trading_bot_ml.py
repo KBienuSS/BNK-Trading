@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 import threading
 import random
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template  # Dodano render_template
 from flask_cors import CORS
 
 logging.basicConfig(
@@ -775,10 +775,18 @@ CORS(app)
 # Inicjalizacja bota
 trading_bot = LLMTradingBot(initial_capital=10000, leverage=10)
 
+# Routes do renderowania stron
 @app.route('/')
 def index():
-    return "LLM Trading Bot API is running!"
+    """Strona główna - renderuje template index.html"""
+    return render_template('index.html')
 
+@app.route('/dashboard')
+def dashboard():
+    """Dashboard - również renderuje index.html (lub inny template jeśli masz)"""
+    return render_template('index.html')
+
+# API endpoints
 @app.route('/api/trading-data')
 def get_trading_data():
     """Zwraca dane tradingowe dla dashboardu"""
