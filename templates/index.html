@@ -1595,26 +1595,52 @@
 
         // Kontrola bota
         async function startBot() {
-            try {
-                const response = await fetch('/api/start-bot');
-                const data = await response.json();
-                alert(data.status);
-                checkBotStatus();
-            } catch (error) {
-                alert('Error starting bot: ' + error.message);
-            }
+    try {
+        const response = await fetch('/api/start-bot', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({})  // Wyślij pusty obiekt
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
+        
+        const data = await response.json();
+        alert(data.status || data.message);
+        checkBotStatus();
+    } catch (error) {
+        console.error('Error starting bot:', error);
+        alert('Error starting bot: ' + error.message);
+    }
+}
 
-        async function stopBot() {
-            try {
-                const response = await fetch('/api/stop-bot');
-                const data = await response.json();
-                alert(data.status);
-                checkBotStatus();
-            } catch (error) {
-                alert('Error stopping bot: ' + error.message);
-            }
+async function stopBot() {
+    try {
+        const response = await fetch('/api/stop-bot', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({})  // Wyślij pusty obiekt
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
+        
+        const data = await response.json();
+        alert(data.status || data.message);
+        checkBotStatus();
+    } catch (error) {
+        console.error('Error stopping bot:', error);
+        alert('Error stopping bot: ' + error.message);
+    }
+}
 
         async function changeProfile(profileName) {
             try {
