@@ -34,10 +34,10 @@ class LLMTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
-        # API Binance - DOKŁADNIE TAKIE SAMO JAK WE FRONTENDZIE
+        # API Binance
         self.binance_base_url = "https://api.binance.com/api/v3"
         
-        # Cache cen - przechowujemy ostatnie ceny dla każdego symbolu
+        # Cache cen
         self.price_cache = {}
         self.price_history = {}
         
@@ -80,9 +80,9 @@ class LLMTradingBot:
         # AKTYWNY PROFIL
         self.active_profile = 'Claude'
         
-        # PARAMETRY OPERACYJNE
+        # PARAMETRY OPERACYJNE - DODANO DOGEUSDT
         self.max_simultaneous_positions = 4
-        self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT']
+        self.assets = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT']  # DODANO DOGE
         
         # STATYSTYKI
         self.stats = {
@@ -120,9 +120,10 @@ class LLMTradingBot:
         self.logger.info("🧠 LLM-STYLE TRADING BOT - Alpha Arena Inspired")
         self.logger.info(f"💰 Initial capital: ${initial_capital} | Leverage: {leverage}x")
         self.logger.info(f"🎯 Active LLM Profile: {self.active_profile}")
+        self.logger.info(f"📈 Trading assets: {', '.join(self.assets)}")
 
     def get_binance_price(self, symbol: str) -> Optional[float]:
-        """Pobiera aktualną cenę z API Binance - DOKŁADNIE TAK SAMO JAK WE FRONTENDZIE"""
+        """Pobiera aktualną cenę z API Binance"""
         try:
             url = f"{self.binance_base_url}/ticker/price"
             params = {'symbol': symbol}
@@ -170,18 +171,19 @@ class LLMTradingBot:
             return None
 
     def get_current_price(self, symbol: str) -> float:
-        """Pobiera aktualną cenę - GŁÓWNA FUNKCJA UŻYWAJĄCA TEGO SAMEGO API CO FRONTEND"""
+        """Pobiera aktualną cenę - GŁÓWNA FUNKCJA UŻYWAJĄCA API BINANCE"""
         price = self.get_binance_price(symbol)
         
         if price is None:
-            # Fallback tylko gdy API kompletnie nie działa
+            # Fallback tylko gdy API kompletnie nie działa - DODANO DOGE
             self.logger.warning(f"⚠️ Using fallback price for {symbol}")
             fallback_prices = {
                 'BTCUSDT': 112614,
                 'ETHUSDT': 3485, 
                 'SOLUSDT': 178,
                 'XRPUSDT': 0.615,
-                'BNBUSDT': 582
+                'BNBUSDT': 582,
+                'DOGEUSDT': 0.15  # DODANO FALLBACK DLA DOGE
             }
             price = fallback_prices.get(symbol, 100)
             # Dodaj minimalny szum aby uniknąć identycznych cen
@@ -613,7 +615,6 @@ class LLMTradingBot:
         
         for position_id, position in self.positions.items():
             if position['status'] == 'ACTIVE':
-                # UŻYJ RZECZYWISTEJ CENY Z API BINANCE
                 current_price = position.get('current_price', self.get_current_price(position['symbol']))
                 
                 if position['side'] == 'LONG':
@@ -651,7 +652,7 @@ class LLMTradingBot:
                 
                 total_unrealized_pnl += unrealized_pnl
         
-        # Oblicz confidence levels dla każdego assetu UŻYWAJĄC RZECZYWISTYCH CEN
+        # Oblicz confidence levels dla każdego assetu - DODANO DOGE
         confidence_levels = {}
         for symbol in self.assets:
             try:
@@ -876,4 +877,5 @@ if __name__ == '__main__':
     print("🚀 Starting LLM Trading Bot Server...")
     print("📍 Dashboard available at: http://localhost:5000")
     print("🧠 LLM Profiles: Claude, Gemini, GPT, Qwen")
+    print("📈 Trading assets: BTC, ETH, SOL, XRP, BNB, DOGE")
     app.run(debug=True, host='0.0.0.0', port=5000)
