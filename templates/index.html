@@ -926,6 +926,7 @@
                 <table class="trades-table" id="trades-table">
                     <thead>
                         <tr>
+                            <th>Date</th>
                             <th>Time</th>
                             <th>Symbol</th>
                             <th>Side</th>
@@ -1552,6 +1553,7 @@
             const tradesBody = document.getElementById('trades-body');
             tradesBody.innerHTML = '';
             
+            // W funkcji updateDashboard - zaktualizuj część Recent Trades
             if (data.recent_trades && data.recent_trades.length > 0) {
                 console.log('📈 Rendering recent trades:', data.recent_trades);
                 
@@ -1559,8 +1561,21 @@
                     const row = document.createElement('tr');
                     const pnlClass = (trade.realized_pnl || 0) >= 0 ? 'profit' : 'loss';
                     
+                    // Formatuj datę i czas
+                    const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
+                    const tradeDate = exitTime.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: 'numeric'
+                    });
+                    const tradeTime = exitTime.toLocaleTimeString('en-US', { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
+                    
                     row.innerHTML = `
-                        <td>${trade.exit_time || 'N/A'}</td>
+                        <td><strong>${tradeDate}</strong></td>  <!-- DODANA DATA -->
+                        <td>${tradeTime}</td>
                         <td><strong>${trade.symbol}</strong></td>
                         <td>${trade.side || 'LONG'}</td>
                         <td>$${(trade.entry_price || 0).toFixed(4)}</td>
@@ -1575,7 +1590,7 @@
                     tradesBody.appendChild(row);
                 });
             } else {
-                tradesBody.innerHTML = '<tr><td colspan="11" class="no-trades">No recent trades</td></tr>';
+                tradesBody.innerHTML = '<tr><td colspan="12" class="no-trades">No recent trades</td></tr>';  <!-- Zmień na 12 -->
             }
             document.getElementById('trades-update').textContent = `Last update: ${now}`;
 
