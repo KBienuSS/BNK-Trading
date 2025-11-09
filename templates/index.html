@@ -1554,6 +1554,7 @@
             tradesBody.innerHTML = '';
             
             // W funkcji updateDashboard - zaktualizuj część Recent Trades
+            // W funkcji updateDashboard - zaktualizuj część Recent Trades
             if (data.recent_trades && data.recent_trades.length > 0) {
                 console.log('📈 Rendering recent trades:', data.recent_trades);
                 
@@ -1561,20 +1562,54 @@
                     const row = document.createElement('tr');
                     const pnlClass = (trade.realized_pnl || 0) >= 0 ? 'profit' : 'loss';
                     
-                    // Formatuj datę i czas
-                    const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
-                    const tradeDate = exitTime.toLocaleDateString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric',
-                        year: 'numeric'
-                    });
-                    const tradeTime = exitTime.toLocaleTimeString('en-US', { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                    });
+                    // POPRAWIONE PARSOWANIE DATY
+                    let tradeDate = "N/A";
+                    let tradeTime = "N/A";
+                    
+                    try {
+                        // Sprawdź różne formaty daty z backendu
+                        let exitTime;
+                        
+                        if (trade.exit_time) {
+                            // Format 1: "2025-11-09T17:36:40.980619" (ISO)
+                            if (trade.exit_time.includes('T')) {
+                                exitTime = new Date(trade.exit_time);
+                            } 
+                            // Format 2: "14:57:28" (tylko czas)
+                            else if (trade.exit_time.match(/^\d{2}:\d{2}:\d{2}$/)) {
+                                // Użyj dzisiejszej daty z podanym czasem
+                                const today = new Date();
+                                const [hours, minutes, seconds] = trade.exit_time.split(':');
+                                exitTime = new Date(today);
+                                exitTime.setHours(parseInt(hours), parseInt(minutes), parseInt(seconds));
+                            }
+                            // Format 3: Obiekt Date z backendu
+                            else {
+                                exitTime = new Date(trade.exit_time);
+                            }
+                            
+                            // Sprawdź czy data jest poprawna
+                            if (!isNaN(exitTime.getTime())) {
+                                tradeDate = exitTime.toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                });
+                                tradeTime = exitTime.toLocaleTimeString('en-US', { 
+                                    hour: '2-digit', 
+                                    minute: '2-digit',
+                                    second: '2-digit'
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error parsing date:', error, trade);
+                        tradeDate = "Error";
+                        tradeTime = "Error";
+                    }
                     
                     row.innerHTML = `
-                        <td><strong>${tradeDate}</strong></td>  <!-- DODANA DATA -->
+                        <td><strong>${tradeDate}</strong></td>
                         <td>${tradeTime}</td>
                         <td><strong>${trade.symbol}</strong></td>
                         <td>${trade.side || 'LONG'}</td>
@@ -1590,7 +1625,7 @@
                     tradesBody.appendChild(row);
                 });
             } else {
-                tradesBody.innerHTML = '<tr><td colspan="12" class="no-trades">No recent trades</td></tr>';  <!-- Zmień na 12 -->
+                tradesBody.innerHTML = '<tr><td colspan="12" class="no-trades">No recent trades</td></tr>';
             }
             document.getElementById('trades-update').textContent = `Last update: ${now}`;
 
