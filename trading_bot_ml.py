@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 import threading
 import random
-from flask import Flask, jsonify, request, render_template  # Dodano render_template
+from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 
 logging.basicConfig(
@@ -41,7 +41,7 @@ class LLMTradingBot:
         self.price_cache = {}
         self.price_history = {}
         
-        # PROFIL ZACHOWANIA INSPIROWANY LLM (wg Alpha Arena)
+        # PROFIL ZACHOWANIA INSPIROWANY LLM (wg Alpha Arena) - ZMODYFIKOWANE
         self.llm_profiles = {
             'Claude': {
                 'risk_appetite': 'MEDIUM',
@@ -49,7 +49,12 @@ class LLMTradingBot:
                 'short_frequency': 0.1,
                 'holding_bias': 'LONG',
                 'trade_frequency': 'LOW',
-                'position_sizing': 'CONSERVATIVE'
+                'position_sizing': 'CONSERVATIVE',
+                'min_holding_hours': 2,
+                'max_holding_hours': 8,
+                'tp_multiplier': 1.0,
+                'sl_multiplier': 1.0,
+                'confidence_threshold': 0.4
             },
             'Gemini': {
                 'risk_appetite': 'HIGH', 
@@ -57,7 +62,12 @@ class LLMTradingBot:
                 'short_frequency': 0.35,
                 'holding_bias': 'SHORT',
                 'trade_frequency': 'HIGH',
-                'position_sizing': 'AGGRESSIVE'
+                'position_sizing': 'AGGRESSIVE',
+                'min_holding_hours': 1,
+                'max_holding_hours': 6,
+                'tp_multiplier': 1.2,
+                'sl_multiplier': 0.9,
+                'confidence_threshold': 0.3
             },
             'GPT': {
                 'risk_appetite': 'LOW',
@@ -65,7 +75,12 @@ class LLMTradingBot:
                 'short_frequency': 0.4,
                 'holding_bias': 'NEUTRAL',
                 'trade_frequency': 'MEDIUM',
-                'position_sizing': 'CONSERVATIVE'
+                'position_sizing': 'CONSERVATIVE',
+                'min_holding_hours': 2,
+                'max_holding_hours': 10,
+                'tp_multiplier': 0.8,
+                'sl_multiplier': 1.1,
+                'confidence_threshold': 0.5
             },
             'Qwen': {
                 'risk_appetite': 'HIGH',
@@ -73,7 +88,15 @@ class LLMTradingBot:
                 'short_frequency': 0.2,
                 'holding_bias': 'LONG', 
                 'trade_frequency': 'MEDIUM',
-                'position_sizing': 'VERY_AGGRESSIVE'
+                'position_sizing': 'VERY_AGGRESSIVE',
+                'min_holding_hours': 4,        # Wydłużone minimum
+                'max_holding_hours': 24,       # Wydłużone maksimum
+                'tp_multiplier': 1.3,          # Szersze TP
+                'sl_multiplier': 1.2,          # Szersze SL
+                'confidence_threshold': 0.4,   # Niższy próg wejścia
+                'use_tiered_exits': True,      # System warstwowy
+                'use_trailing_stop': True,     # Trailing stop
+                'use_volatility_based': True   # Bazowanie na ATR
             }
         }
         
@@ -157,7 +180,6 @@ class LLMTradingBot:
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"❌ API Error getting price for {symbol}: {e}")
-            # Tylko cache jako fallback - BRAK STAŁYCH CEN
             if symbol in self.price_cache:
                 cache_age = (datetime.now() - self.price_cache[symbol]['timestamp']).total_seconds()
                 if cache_age < 300:  # 5 minut
@@ -174,10 +196,38 @@ class LLMTradingBot:
         """Pobiera aktualną cenę - WYŁĄCZNIE Z API BINANCE"""
         return self.get_binance_price(symbol)
 
+    def calculate_atr(self, symbol: str, period: int = 14) -> float:
+        """Oblicza Average True Range dla danego symbolu"""
+        try:
+            if symbol not in self.price_history or len(self.price_history[symbol]) < period + 1:
+                return 0.02  # fallback 2%
+            
+            prices = [entry['price'] for entry in self.price_history[symbol]]
+            true_ranges = []
+            
+            for i in range(1, len(prices)):
+                high = max(prices[i], prices[i-1])
+                low = min(prices[i], prices[i-1])
+                true_range = high - low
+                true_ranges.append(true_range)
+            
+            # Weź ostatnie N true ranges
+            recent_true_ranges = true_ranges[-period:] if len(true_ranges) >= period else true_ranges
+            atr = np.mean(recent_true_ranges) if recent_true_ranges else 0
+            
+            # Normalizuj do procentów
+            current_price = prices[-1] if prices else 1
+            atr_percent = atr / current_price if current_price > 0 else 0.02
+            
+            return max(min(atr_percent, 0.1), 0.005)  # Limit 0.5% - 10%
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating ATR for {symbol}: {e}")
+            return 0.02
+
     def analyze_simple_momentum(self, symbol: str) -> float:
         """Analiza momentum na podstawie rzeczywistych danych z API Binance"""
         try:
-            # Użyj historii cen do obliczenia momentum
             if symbol not in self.price_history or len(self.price_history[symbol]) < 2:
                 return random.uniform(-0.02, 0.02)
             
@@ -264,14 +314,14 @@ class LLMTradingBot:
         return signal, final_confidence
 
     def calculate_position_size(self, symbol: str, price: float, confidence: float) -> Tuple[float, float, float]:
-        """Oblicza wielkość pozycji w stylu LLM"""
+        """Oblicza wielkość pozycji w stylu LLM - ZMODYFIKOWANE DLA QWEN"""
         profile = self.get_current_profile()
         
         base_allocation = {
             'Claude': 0.15,
             'Gemini': 0.25, 
             'GPT': 0.10,
-            'Qwen': 0.30
+            'Qwen': 0.40  # Zwiększone z 0.30
         }.get(self.active_profile, 0.15)
         
         confidence_multiplier = 0.5 + (confidence * 0.5)
@@ -293,61 +343,141 @@ class LLMTradingBot:
         
         return quantity, position_value, margin_required
 
-    def calculate_llm_exit_plan(self, entry_price: float, confidence: float, side: str) -> Dict:
-        """Oblicza plan wyjścia w stylu LLM"""
+    def calculate_volatility_based_exits(self, symbol: str, entry_price: float, side: str, confidence: float) -> Dict:
+        """Oblicza TP/SL bazujące na zmienności (ATR)"""
         profile = self.get_current_profile()
+        atr_percent = self.calculate_atr(symbol)
         
-        if confidence > 0.7:
-            if side == "LONG":
-                take_profit = entry_price * 1.018
-                stop_loss = entry_price * 0.992
+        # Domyślne multiplikatory
+        if self.active_profile == 'Qwen':
+            if confidence > 0.8:
+                tp_multiplier = 2.5 * profile['tp_multiplier']
+                sl_multiplier = 1.0 * profile['sl_multiplier']
+            elif confidence > 0.6:
+                tp_multiplier = 2.0 * profile['tp_multiplier']
+                sl_multiplier = 1.2 * profile['sl_multiplier']
             else:
-                take_profit = entry_price * 0.982
-                stop_loss = entry_price * 1.008
-        elif confidence > 0.5:
-            if side == "LONG":
-                take_profit = entry_price * 1.012
-                stop_loss = entry_price * 0.994
-            else:
-                take_profit = entry_price * 0.988
-                stop_loss = entry_price * 1.006
+                tp_multiplier = 1.5 * profile['tp_multiplier']
+                sl_multiplier = 1.5 * profile['sl_multiplier']
         else:
-            if side == "LONG":
-                take_profit = entry_price * 1.008
-                stop_loss = entry_price * 0.996
-            else:
-                take_profit = entry_price * 0.992
-                stop_loss = entry_price * 1.004
-        
-        risk_multiplier = {
-            'LOW': 0.8,
-            'MEDIUM': 1.0,
-            'HIGH': 1.2
-        }.get(profile['risk_appetite'], 1.0)
+            tp_multiplier = profile['tp_multiplier']
+            sl_multiplier = profile['sl_multiplier']
         
         if side == "LONG":
-            take_profit = entry_price + (take_profit - entry_price) * risk_multiplier
-            stop_loss = entry_price - (entry_price - stop_loss) * risk_multiplier
+            take_profit = entry_price * (1 + atr_percent * tp_multiplier)
+            stop_loss = entry_price * (1 - atr_percent * sl_multiplier)
         else:
-            take_profit = entry_price - (entry_price - take_profit) * risk_multiplier
-            stop_loss = entry_price + (stop_loss - entry_price) * risk_multiplier
+            take_profit = entry_price * (1 - atr_percent * tp_multiplier)
+            stop_loss = entry_price * (1 + atr_percent * sl_multiplier)
         
-        return {
+        return take_profit, stop_loss
+
+    def calculate_tiered_exit_plan(self, entry_price: float, side: str, confidence: float) -> List[Dict]:
+        """System warstwowych zysków dla agresywnego Qwen"""
+        profile = self.get_current_profile()
+        
+        if self.active_profile == 'Qwen' and profile.get('use_tiered_exits', False):
+            if confidence > 0.8:
+                tiers = [
+                    {'percent': 0.3, 'tp_pct': 0.010},  # 30% pozycji przy 1%
+                    {'percent': 0.4, 'tp_pct': 0.018},  # 40% przy 1.8%  
+                    {'percent': 0.3, 'tp_pct': 0.025}   # 30% przy 2.5%
+                ]
+            elif confidence > 0.6:
+                tiers = [
+                    {'percent': 0.5, 'tp_pct': 0.008},  # 50% przy 0.8%
+                    {'percent': 0.5, 'tp_pct': 0.015}   # 50% przy 1.5%
+                ]
+            else:
+                tiers = [
+                    {'percent': 0.7, 'tp_pct': 0.006},  # 70% przy 0.6%
+                    {'percent': 0.3, 'tp_pct': 0.012}   # 30% przy 1.2%
+                ]
+            
+            # Konwersja na ceny
+            partial_exits = []
+            for tier in tiers:
+                if side == "LONG":
+                    tp_price = entry_price * (1 + tier['tp_pct'])
+                else:
+                    tp_price = entry_price * (1 - tier['tp_pct'])
+                partial_exits.append({
+                    'price': round(tp_price, 4),
+                    'percent': tier['percent']
+                })
+            
+            return partial_exits
+        else:
+            # Dla innych profili - brak partial exits
+            return []
+
+    def calculate_llm_exit_plan(self, entry_price: float, confidence: float, side: str) -> Dict:
+        """Oblicza plan wyjścia w stylu LLM - ZMODYFIKOWANE DLA QWEN"""
+        profile = self.get_current_profile()
+        
+        # SPECJALNE TRAJTOWANIE QWEN - volatility based exits
+        if self.active_profile == 'Qwen' and profile.get('use_volatility_based', True):
+            take_profit, stop_loss = self.calculate_volatility_based_exits(
+                'BTCUSDT', entry_price, side, confidence  # Używamy BTC jako proxy
+            )
+        else:
+            # Standardowe obliczenia dla innych profili
+            if confidence > 0.7:
+                if side == "LONG":
+                    take_profit = entry_price * 1.018
+                    stop_loss = entry_price * 0.992
+                else:
+                    take_profit = entry_price * 0.982
+                    stop_loss = entry_price * 1.008
+            elif confidence > 0.5:
+                if side == "LONG":
+                    take_profit = entry_price * 1.012
+                    stop_loss = entry_price * 0.994
+                else:
+                    take_profit = entry_price * 0.988
+                    stop_loss = entry_price * 1.006
+            else:
+                if side == "LONG":
+                    take_profit = entry_price * 1.008
+                    stop_loss = entry_price * 0.996
+                else:
+                    take_profit = entry_price * 0.992
+                    stop_loss = entry_price * 1.004
+        
+        # Zastosuj multiplikatory profilu
+        take_profit = entry_price + (take_profit - entry_price) * profile['tp_multiplier']
+        stop_loss = entry_price + (stop_loss - entry_price) * profile['sl_multiplier']
+        
+        # Oblicz partial exits dla Qwen
+        partial_exits = self.calculate_tiered_exit_plan(entry_price, side, confidence)
+        
+        exit_plan = {
             'take_profit': round(take_profit, 4),
             'stop_loss': round(stop_loss, 4),
             'invalidation': entry_price * 0.98 if side == "LONG" else entry_price * 1.02,
-            'max_holding_hours': random.randint(1, 6)
+            'max_holding_hours': random.randint(profile['min_holding_hours'], profile['max_holding_hours']),
+            'partial_exits': partial_exits,
+            'use_trailing_stop': profile.get('use_trailing_stop', False),
+            'trailing_start': 0.008 if self.active_profile == 'Qwen' else 0.012,
+            'trailing_step': 0.003 if self.active_profile == 'Qwen' else 0.005,
+            'original_sl': None  # Do trailing stop
         }
+        
+        return exit_plan
 
     def should_enter_trade(self) -> bool:
-        """Decyduje czy wejść w transakcję wg profilu częstotliwości"""
+        """Decyduje czy wejść w transakcję wg profilu częstotliwości - ZMODYFIKOWANE"""
         profile = self.get_current_profile()
         
         frequency_chance = {
-            'LOW': 0.3,
-            'MEDIUM': 0.5,
-            'HIGH': 0.7
-        }.get(profile['trade_frequency'], 0.5)
+            'LOW': 0.2,        # Zmniejszone
+            'MEDIUM': 0.3,     # Zmniejszone  
+            'HIGH': 0.5        # Zmniejszone
+        }.get(profile['trade_frequency'], 0.3)
+        
+        # DODATKOWY FILTR DLA QWEN - mniej, ale większe pozycje
+        if self.active_profile == 'Qwen' and len([p for p in self.positions.values() if p['status'] == 'ACTIVE']) >= 2:
+            return False  # Qwen powinien trzymać 1-2 pozycje
         
         return random.random() < frequency_chance
 
@@ -362,7 +492,10 @@ class LLMTradingBot:
             return None
             
         signal, confidence = self.generate_llm_signal(symbol)
-        if signal == "HOLD" or confidence < 0.3:
+        
+        # Sprawdź próg confidence dla profilu
+        profile = self.get_current_profile()
+        if signal == "HOLD" or confidence < profile['confidence_threshold']:
             return None
             
         active_positions = sum(1 for p in self.positions.values() if p['status'] == 'ACTIVE')
@@ -400,7 +533,8 @@ class LLMTradingBot:
             'unrealized_pnl': 0,
             'confidence': confidence,
             'llm_profile': self.active_profile,
-            'exit_plan': exit_plan
+            'exit_plan': exit_plan,
+            'partial_exits_taken': []  # Śledzenie wykonanych partial exits
         }
         
         self.positions[position_id] = position
@@ -419,7 +553,91 @@ class LLMTradingBot:
         self.logger.info(f"   🎯 TP: {exit_plan['take_profit']:.4f} ({tp_distance:+.2f}%)")
         self.logger.info(f"   🛑 SL: {exit_plan['stop_loss']:.4f} ({sl_distance:+.2f}%)")
         
+        if exit_plan['partial_exits']:
+            self.logger.info(f"   📈 Partial exits: {len(exit_plan['partial_exits'])} tiers")
+        
         return position_id
+
+    def update_trailing_stop(self, position_id: str, current_price: float):
+        """Aktualizuje trailing stop dla pozycji"""
+        position = self.positions[position_id]
+        exit_plan = position['exit_plan']
+        
+        if not exit_plan.get('use_trailing_stop', False):
+            return
+        
+        unrealized_pnl_pct = abs(current_price - position['entry_price']) / position['entry_price']
+        
+        # Sprawdź czy osiągnięto poziom startu trailing
+        if unrealized_pnl_pct >= exit_plan['trailing_start']:
+            if exit_plan['original_sl'] is None:
+                exit_plan['original_sl'] = exit_plan['stop_loss']
+            
+            # Oblicz nowy stop loss
+            if position['side'] == "LONG":
+                new_sl = current_price * (1 - exit_plan['trailing_step'])
+                # Podnieś SL tylko jeśli wyższy niż obecny
+                if new_sl > exit_plan['stop_loss']:
+                    exit_plan['stop_loss'] = new_sl
+            else:
+                new_sl = current_price * (1 + exit_plan['trailing_step'])
+                # Obniż SL tylko jeśli niższy niż obecny
+                if new_sl < exit_plan['stop_loss']:
+                    exit_plan['stop_loss'] = new_sl
+
+    def check_partial_exits(self, position_id: str, current_price: float) -> bool:
+        """Sprawdza warunki partial take profits"""
+        position = self.positions[position_id]
+        exit_plan = position['exit_plan']
+        
+        if not exit_plan['partial_exits']:
+            return False
+        
+        for partial_exit in exit_plan['partial_exits']:
+            if partial_exit['price'] in position['partial_exits_taken']:
+                continue
+                
+            if position['side'] == "LONG" and current_price >= partial_exit['price']:
+                return self.execute_partial_exit(position_id, partial_exit)
+            elif position['side'] == "SHORT" and current_price <= partial_exit['price']:
+                return self.execute_partial_exit(position_id, partial_exit)
+        
+        return False
+
+    def execute_partial_exit(self, position_id: str, partial_exit: Dict) -> bool:
+        """Wykonuje partial exit z pozycji"""
+        position = self.positions[position_id]
+        
+        # Oblicz ilość do zamknięcia
+        close_quantity = position['quantity'] * partial_exit['percent']
+        close_value = close_quantity * position['entry_price'] * position['leverage']
+        
+        # Oblicz P&L dla partial exit
+        current_price = self.get_current_price(position['symbol'])
+        if position['side'] == "LONG":
+            pnl_pct = (current_price - position['entry_price']) / position['entry_price']
+        else:
+            pnl_pct = (position['entry_price'] - current_price) / position['entry_price']
+        
+        realized_pnl = pnl_pct * close_quantity * position['entry_price'] * position['leverage']
+        fee = abs(realized_pnl) * 0.001
+        realized_pnl_after_fee = realized_pnl - fee
+        
+        # Aktualizuj pozycję
+        position['quantity'] -= close_quantity
+        position['margin'] *= (1 - partial_exit['percent'])  # Zmniejsz margin proporcjonalnie
+        
+        # Zwróć margin i P&L
+        returned_margin = position['margin'] * partial_exit['percent']
+        self.virtual_balance += returned_margin + realized_pnl_after_fee
+        self.virtual_capital += realized_pnl_after_fee
+        
+        # Zapisz partial exit
+        position['partial_exits_taken'].append(partial_exit['price'])
+        
+        self.logger.info(f"🟡 PARTIAL EXIT: {position['symbol']} - {partial_exit['percent']:.0%} @ ${current_price:.4f} | P&L: ${realized_pnl_after_fee:+.2f}")
+        
+        return True
 
     def update_positions_pnl(self):
         """Aktualizuje P&L wszystkich pozycji używając rzeczywistych cen z API"""
@@ -428,7 +646,7 @@ class LLMTradingBot:
         total_confidence = 0
         confidence_count = 0
         
-        for position in self.positions.values():
+        for position_id, position in self.positions.items():
             if position['status'] != 'ACTIVE':
                 continue
                 
@@ -445,6 +663,12 @@ class LLMTradingBot:
             
             position['unrealized_pnl'] = unrealized_pnl
             position['current_price'] = current_price
+            
+            # Aktualizuj trailing stop
+            self.update_trailing_stop(position_id, current_price)
+            
+            # Sprawdź partial exits
+            self.check_partial_exits(position_id, current_price)
             
             total_unrealized += unrealized_pnl
             total_margin += position['margin']
@@ -535,7 +759,8 @@ class LLMTradingBot:
             'confidence': position['confidence'],
             'entry_time': position['entry_time'],
             'exit_time': datetime.now(),
-            'holding_hours': (datetime.now() - position['entry_time']).total_seconds() / 3600
+            'holding_hours': (datetime.now() - position['entry_time']).total_seconds() / 3600,
+            'partial_exits_taken': len(position['partial_exits_taken'])
         }
         
         self.trade_history.append(trade_record)
@@ -633,7 +858,8 @@ class LLMTradingBot:
                     'entry_time': position['entry_time'].strftime('%H:%M:%S'),
                     'exit_plan': position['exit_plan'],
                     'tp_distance_pct': tp_distance_pct,
-                    'sl_distance_pct': sl_distance_pct
+                    'sl_distance_pct': sl_distance_pct,
+                    'partial_exits_taken': len(position['partial_exits_taken'])
                 })
                 
                 total_unrealized_pnl += unrealized_pnl
@@ -660,7 +886,8 @@ class LLMTradingBot:
                 'llm_profile': trade['llm_profile'],
                 'confidence': trade['confidence'],
                 'holding_hours': round(trade['holding_hours'], 2),
-                'exit_time': trade['exit_time'].strftime('%H:%M:%S')
+                'exit_time': trade['exit_time'].strftime('%H:%M:%S'),
+                'partial_exits': trade.get('partial_exits_taken', 0)
             })
         
         # Metryki wydajności
@@ -783,7 +1010,7 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Dashboard - również renderuje index.html (lub inny template jeśli masz)"""
+    """Dashboard - również renderuje index.html"""
     return render_template('index.html')
 
 # API endpoints
@@ -873,4 +1100,5 @@ if __name__ == '__main__':
     print("🧠 LLM Profiles: Claude, Gemini, GPT, Qwen")
     print("📈 Trading assets: BTC, ETH, SOL, XRP, BNB, DOGE")
     print("💹 Using REAL-TIME prices from Binance API only")
+    print("🎯 Qwen Profile Features: Extended holding periods, Tiered exits, Volatility-based TP/SL")
     app.run(debug=True, host='0.0.0.0', port=5000)
