@@ -34,8 +34,8 @@ class LLMTradingBot:
         
         self.logger = logging.getLogger(__name__)
         
-        # API Binance
-        self.binance_base_url = "https://api.binance.com/api/v3"
+        # API Bybit - ZMIANA Z BINANCE NA BYBIT
+        self.bybit_base_url = "https://api.bybit.com"
         
         # Cache cen
         self.price_cache = {}
@@ -145,38 +145,46 @@ class LLMTradingBot:
         self.logger.info(f"🎯 Active LLM Profile: {self.active_profile}")
         self.logger.info(f"📈 Trading assets: {', '.join(self.assets)}")
 
-    def get_binance_price(self, symbol: str) -> Optional[float]:
-        """Pobiera aktualną cenę z API Binance - JEDYNE ŹRÓDŁO CEN"""
+    def get_bybit_price(self, symbol: str) -> Optional[float]:
+        """Pobiera aktualną cenę z API Bybit - JEDYNE ŹRÓDŁO CEN"""
         try:
-            url = f"{self.binance_base_url}/ticker/price"
-            params = {'symbol': symbol}
+            url = f"{self.bybit_base_url}/v5/market/tickers"
+            params = {
+                'category': 'spot',
+                'symbol': symbol
+            }
             
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             
             data = response.json()
-            price = float(data['price'])
             
-            # Zapisz w cache
-            self.price_cache[symbol] = {
-                'price': price,
-                'timestamp': datetime.now()
-            }
-            
-            # Zapisz w historii dla analizy
-            if symbol not in self.price_history:
-                self.price_history[symbol] = []
-            
-            self.price_history[symbol].append({
-                'price': price,
-                'timestamp': datetime.now()
-            })
-            
-            # Ogranicz historię do ostatnich 50 punktów
-            if len(self.price_history[symbol]) > 50:
-                self.price_history[symbol] = self.price_history[symbol][-50:]
-            
-            return price
+            if data['retCode'] == 0 and data['result']['list']:
+                price = float(data['result']['list'][0]['lastPrice'])
+                
+                # Zapisz w cache
+                self.price_cache[symbol] = {
+                    'price': price,
+                    'timestamp': datetime.now()
+                }
+                
+                # Zapisz w historii dla analizy
+                if symbol not in self.price_history:
+                    self.price_history[symbol] = []
+                
+                self.price_history[symbol].append({
+                    'price': price,
+                    'timestamp': datetime.now()
+                })
+                
+                # Ogranicz historię do ostatnich 50 punktów
+                if len(self.price_history[symbol]) > 50:
+                    self.price_history[symbol] = self.price_history[symbol][-50:]
+                
+                return price
+            else:
+                self.logger.error(f"❌ Bybit API error for {symbol}: {data.get('retMsg', 'Unknown error')}")
+                return None
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"❌ API Error getting price for {symbol}: {e}")
@@ -193,8 +201,8 @@ class LLMTradingBot:
             return None
 
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """Pobiera aktualną cenę - WYŁĄCZNIE Z API BINANCE"""
-        return self.get_binance_price(symbol)
+        """Pobiera aktualną cenę - WYŁĄCZNIE Z API BYBIT"""
+        return self.get_bybit_price(symbol)
 
     def calculate_atr(self, symbol: str, period: int = 14) -> float:
         """Oblicza Average True Range dla danego symbolu"""
@@ -226,7 +234,7 @@ class LLMTradingBot:
             return 0.02
 
     def analyze_simple_momentum(self, symbol: str) -> float:
-        """Analiza momentum na podstawie rzeczywistych danych z API Binance"""
+        """Analiza momentum na podstawie rzeczywistych danych z API Bybit"""
         try:
             if symbol not in self.price_history or len(self.price_history[symbol]) < 2:
                 return random.uniform(-0.02, 0.02)
@@ -250,7 +258,7 @@ class LLMTradingBot:
             return random.uniform(-0.02, 0.02)
 
     def check_volume_activity(self, symbol: str) -> bool:
-        """Sprawdza aktywność wolumenu na podstawie zmienności cen z API Binance"""
+        """Sprawdza aktywność wolumenu na podstawie zmienności cen z API Bybit"""
         try:
             if symbol not in self.price_history or len(self.price_history[symbol]) < 10:
                 return random.random() < 0.6
@@ -267,7 +275,7 @@ class LLMTradingBot:
             return random.random() < 0.6
 
     def generate_llm_signal(self, symbol: str) -> Tuple[str, float]:
-        """Generuje sygnał w stylu LLM na podstawie rzeczywistych danych z API Binance"""
+        """Generuje sygnał w stylu LLM na podstawie rzeczywistych danych z API Bybit"""
         profile = self.get_current_profile()
         
         # Podstawowe obserwacje na podstawie rzeczywistych cen
@@ -343,7 +351,7 @@ class LLMTradingBot:
         
         return quantity, position_value, margin_required
 
-    def calculate_volatility_based_exits(self, symbol: str, entry_price: float, side: str, confidence: float) -> Dict:
+    def calculate_volatility_based_exits(self, symbol: str, entry_price: float, side: str, confidence: float) -> Tuple[float, float]:
         """Oblicza TP/SL bazujące na zmienności (ATR)"""
         profile = self.get_current_profile()
         atr_percent = self.calculate_atr(symbol)
@@ -1099,6 +1107,6 @@ if __name__ == '__main__':
     print("📍 Dashboard available at: http://localhost:5000")
     print("🧠 LLM Profiles: Claude, Gemini, GPT, Qwen")
     print("📈 Trading assets: BTC, ETH, SOL, XRP, BNB, DOGE")
-    print("💹 Using REAL-TIME prices from Binance API only")
+    print("💹 Using REAL-TIME prices from Bybit API only")
     print("🎯 Qwen Profile Features: Extended holding periods, Tiered exits, Volatility-based TP/SL")
     app.run(debug=True, host='0.0.0.0', port=5000)
