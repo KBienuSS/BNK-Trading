@@ -250,9 +250,9 @@ class LLMTradingBot:
         if momentum > 0.01 and volume_active:
             signal = "LONG"
         elif momentum < -0.01 and volume_active:
-                signal = "SHORT"
-            else:
-                signal = "HOLD"
+            signal = "SHORT"
+        else:
+            signal = "HOLD"
         else:
             signal = "HOLD"
             
