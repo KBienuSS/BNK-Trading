@@ -253,8 +253,6 @@ class LLMTradingBot:
             signal = "SHORT"
         else:
             signal = "HOLD"
-        else:
-            signal = "HOLD"
             
         current_price = self.get_current_price(symbol)
         price_display = f"${current_price:.4f}" if current_price else "N/A"
