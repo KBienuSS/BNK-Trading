@@ -250,7 +250,6 @@ class LLMTradingBot:
         if momentum > 0.01 and volume_active:
             signal = "LONG"
         elif momentum < -0.01 and volume_active:
-            if random.random() < profile['short_frequency']:
                 signal = "SHORT"
             else:
                 signal = "HOLD"
