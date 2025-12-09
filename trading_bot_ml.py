@@ -639,6 +639,9 @@ class LLMTradingBot:
                 'exit_reason': trade['exit_reason'],
                 'llm_profile': trade['llm_profile'],
                 'confidence': trade['confidence'],
+                'quantity': trade.get('quantity', 0),  # <-- DODAJ TO
+                'leverage': trade.get('leverage', 1),  # <-- DODAJ TO
+                'margin': trade.get('margin', 0),      # <-- DODAJ TO
                 'holding_hours': round(trade['holding_hours'], 2),
                 'exit_time': trade['exit_time'].strftime('%H:%M:%S')
             })
