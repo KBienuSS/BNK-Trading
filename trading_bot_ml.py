@@ -525,7 +525,9 @@ class LLMTradingBot:
             'side': position['side'],
             'entry_price': position['entry_price'],
             'exit_price': exit_price,
-            'quantity': position['quantity'],
+            'quantity': position['quantity'],  # <-- DODAJ TO
+            'leverage': position['leverage'],  # <-- DODAJ TO
+            'margin': position['margin'],      # <-- DODAJ TO
             'realized_pnl': realized_pnl_after_fee,
             'exit_reason': exit_reason,
             'llm_profile': position['llm_profile'],
@@ -536,25 +538,6 @@ class LLMTradingBot:
         }
         
         self.trade_history.append(trade_record)
-        
-        self.stats['total_trades'] += 1
-        self.stats['total_pnl'] += realized_pnl_after_fee
-        
-        if realized_pnl_after_fee > 0:
-            self.stats['winning_trades'] += 1
-        else:
-            self.stats['losing_trades'] += 1
-        
-        total_holding = sum((t['exit_time'] - t['entry_time']).total_seconds() 
-                          for t in self.trade_history) / 3600
-        self.stats['avg_holding_time'] = total_holding / len(self.trade_history) if self.trade_history else 0
-        
-        position['status'] = 'CLOSED'
-        self.dashboard_data['net_realized'] = self.stats['total_pnl']
-        
-        margin_return = pnl_pct * self.leverage * 100
-        pnl_color = "🟢" if realized_pnl_after_fee > 0 else "🔴"
-        self.logger.info(f"{pnl_color} CLOSE: {position['symbol']} {position['side']} - P&L: ${realized_pnl_after_fee:+.2f} ({margin_return:+.1f}% margin) - Reason: {exit_reason}")
 
     def get_portfolio_diversity(self) -> float:
         """Oblicza dywersyfikację portfela"""
@@ -646,7 +629,7 @@ class LLMTradingBot:
         
         # Ostatnie transakcje
         recent_trades = []
-        for trade in self.trade_history[-10:]:
+        for trade in self.trade_history:
             recent_trades.append({
                 'symbol': trade['symbol'],
                 'side': trade['side'],
